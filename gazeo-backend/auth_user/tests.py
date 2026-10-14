@@ -225,3 +225,77 @@ class AuthAPITests(APITestCase):
         self.assertEqual(update_res.status_code, status.HTTP_200_OK)
         self.assertEqual(update_res.data["fcm_token"], "fcm_test_token_yaounde_12345")
         self.assertEqual(update_res.data["username"], "dieudonne_eteme")
+
+    def test_twilio_cameroon_phone_validation(self):
+        """TwilioSMSService valide et normalise les numéros camerounais."""
+        from auth_user.services.sms_service import TwilioSMSService
+        service = TwilioSMSService()
+
+        self.assertEqual(service.validate_cameroon_number("677112233"), "+237677112233")
+        self.assertEqual(service.validate_cameroon_number("+237699001122"), "+237699001122")
+        self.assertEqual(service.validate_cameroon_number("237 6 55 44 33 22"), "+237655443322")
+
+        with self.assertRaises(ValueError):
+            service.validate_cameroon_number("0612345678")
+        with self.assertRaises(ValueError):
+            service.validate_cameroon_number("1234")
+
+    def test_twilio_rate_limiting_and_lockout(self):
+        """Rate limiting : max 3 OTP par numéro et blocage après 5 échecs consécutifs."""
+        from auth_user.services.sms_service import TwilioSMSService
+        service = TwilioSMSService()
+        test_phone = "+237699887766"
+
+        # 3 premières tentatives autorisées
+        self.assertTrue(service.check_rate_limit_number(test_phone)[0])
+        self.assertTrue(service.check_rate_limit_number(test_phone)[0])
+        self.assertTrue(service.check_rate_limit_number(test_phone)[0])
+
+        # 4ème tentative refusée par rate limit
+        allowed, msg = service.check_rate_limit_number(test_phone)
+        self.assertFalse(allowed)
+        self.assertIn("maximum 3 codes", msg)
+
+        # Enregistrement de 5 échecs -> blocage
+        for _ in range(5):
+            service.record_failed_attempt(test_phone)
+
+        self.assertTrue(service.is_number_blocked(test_phone))
+        # Reset des échecs
+        service.reset_failed_attempts(test_phone)
+        self.assertFalse(service.is_number_blocked(test_phone))
+
+    def test_gerant_kyc_workflow(self):
+        """Workflow KYC : soumission par le gérant et consultation du statut."""
+        gerant = User.objects.create_user(
+            username="+237688990011",
+            telephone="+237688990011",
+            password=self.password,
+            role=UserRole.GERANT,
+            is_verified=True,
+            is_active=True
+        )
+        self.client.force_authenticate(user=gerant)
+
+        # GET statut avant soumission
+        statut_url = reverse('gerants:gerant_kyc_statut')
+        res_statut = self.client.get(statut_url)
+        self.assertEqual(res_statut.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_statut.data['statut'], 'NON_SOUMIS')
+
+        # POST soumission KYC
+        soumettre_url = reverse('gerants:gerant_kyc_soumettre')
+        data = {
+            "cni_recto": "https://res.cloudinary.com/test/image/upload/v1/cni_recto.jpg",
+            "cni_verso": "https://res.cloudinary.com/test/image/upload/v1/cni_verso.jpg",
+            "photo_depot": "https://res.cloudinary.com/test/image/upload/v1/depot.jpg",
+        }
+        res_soumission = self.client.post(soumettre_url, data, format='json')
+        self.assertEqual(res_soumission.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_soumission.data['statut'], 'EN_ATTENTE')
+
+        # GET statut après soumission
+        res_statut_apres = self.client.get(statut_url)
+        self.assertEqual(res_statut_apres.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_statut_apres.data['statut'], 'EN_ATTENTE')
+

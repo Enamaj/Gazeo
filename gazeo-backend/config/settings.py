@@ -45,6 +45,8 @@ THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'cloudinary_storage',
+    'cloudinary',
 ]
 
 LOCAL_APPS = [
@@ -152,3 +154,11 @@ TWILIO_ENABLED = env.bool('TWILIO_ENABLED', default=False)
 
 NOTCHPAY_PUBLIC_KEY = env('NOTCHPAY_PUBLIC_KEY', default='')
 NOTCHPAY_HASH = env('NOTCHPAY_HASH', default='')
+
+# Cloudinary configuration (KYC storage)
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': env('CLOUDINARY_CLOUD_NAME', default='gazeo_cloud'),
+    'API_KEY': env('CLOUDINARY_API_KEY', default='gazeo_key'),
+    'API_SECRET': env('CLOUDINARY_API_SECRET', default='gazeo_secret'),
+}
+

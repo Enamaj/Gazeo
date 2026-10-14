@@ -5,18 +5,22 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
+from .models import User, GerantKYC, StatutKYC
 from .serializers import (
     InscriptionSerializer,
     VerifierOTPSerializer,
     ConnexionSerializer,
     UserProfileSerializer,
+    GerantKYCSoumissionSerializer,
+    GerantKYCStatutSerializer,
 )
+from depots.permissions import IsGerant
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +41,17 @@ def get_tokens_for_user(user: User) -> dict:
     }
 
 
+from .services.sms_service import TwilioSMSService
+
+sms_service = TwilioSMSService()
+
+
 class InscriptionView(APIView):
     """
     POST /auth/inscription/
     Inscription avec téléphone camerounais (+237), mot de passe et rôle.
-    Génère et envoie un code OTP à 6 chiffres.
+    Génère et envoie un code OTP à 6 chiffres via TwilioSMSService.
+    Rate limiting : max 3 OTP/numéro/h, max 10 OTP/IP/h.
     """
     permission_classes = [AllowAny]
 
@@ -53,6 +63,17 @@ class InscriptionView(APIView):
         telephone = serializer.validated_data['telephone']
         password = serializer.validated_data['password']
         role = serializer.validated_data['role']
+
+        # Contrôle Rate Limiting IP
+        client_ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '')).split(',')[0].strip()
+        allowed_ip, msg_ip = sms_service.check_rate_limit_ip(client_ip)
+        if not allowed_ip:
+            return Response({"detail": msg_ip}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # Contrôle Rate Limiting Numéro
+        allowed_num, msg_num = sms_service.check_rate_limit_number(telephone)
+        if not allowed_num:
+            return Response({"detail": msg_num}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         user = User.objects.filter(telephone=telephone).first()
         if user and user.is_verified:
@@ -84,14 +105,15 @@ class InscriptionView(APIView):
                 is_active=False
             )
 
-        # Simulation / Envoi SMS (Twilio intégré en phase 3)
-        logger.info(f"[GAZEO OTP] Code généré pour {telephone} : {otp_code}")
+        # Envoi SMS via Twilio (ou simulation dev)
+        sms_sent = sms_service.send_otp(telephone, otp_code)
+        if not sms_sent:
+            logger.warning(f"[InscriptionView] L'envoi SMS a rencontré une erreur pour {telephone}")
 
         response_payload = {
             "message": "OTP envoyé",
             "telephone": telephone,
         }
-        # En mode DEBUG ou tests, exposer le code OTP pour faciliter le test automatisé
         if settings.DEBUG:
             response_payload["otp_code_debug"] = otp_code
 
@@ -102,6 +124,7 @@ class VerifierOTPView(APIView):
     """
     POST /auth/verifier-otp/
     Vérifie le code OTP à 6 chiffres (validité 10 minutes) et active le compte.
+    Blocage de sécurité 1h après 5 tentatives échouées.
     Retourne les tokens JWT (access_token + refresh_token).
     """
     permission_classes = [AllowAny]
@@ -113,6 +136,12 @@ class VerifierOTPView(APIView):
 
         telephone = serializer.validated_data['telephone']
         otp_code = serializer.validated_data['otp_code']
+
+        if sms_service.is_number_blocked(telephone):
+            return Response(
+                {"detail": "Ce numéro est temporairement bloqué pendant 1 heure suite à 5 tentatives infructueuses."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
 
         user = User.objects.filter(telephone=telephone).first()
         if not user:
@@ -136,12 +165,20 @@ class VerifierOTPView(APIView):
 
         # Vérification concordance du code
         if user.otp_code != otp_code:
+            failures = sms_service.record_failed_attempt(telephone)
+            restantes = max(0, 5 - failures)
+            if failures >= 5:
+                return Response(
+                    {"detail": "Code OTP incorrect. Numéro bloqué pendant 1 heure suite à 5 tentatives infructueuses."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                )
             return Response(
-                {"detail": "Code OTP incorrect."},
+                {"detail": f"Code OTP incorrect. Tentatives restantes : {restantes}."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Activation du compte
+        # Succès : réinitialiser les échecs et activer le compte
+        sms_service.reset_failed_attempts(telephone)
         user.is_verified = True
         user.is_active = True
         user.otp_code = None
@@ -220,3 +257,55 @@ class ProfilView(APIView):
         user.save()
         serializer = UserProfileSerializer(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class GerantKYCSoumettreView(APIView):
+    """
+    POST /gerants/kyc/soumettre/
+    Upload des 3 documents KYC (cni_recto, cni_verso, photo_depot) vers Cloudinary.
+    Envoi d'un SMS de confirmation : 'Dossier reçu, réponse sous 24h'.
+    """
+    permission_classes = [IsAuthenticated, IsGerant]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        gerant = request.user
+        kyc, created = GerantKYC.objects.get_or_create(gerant=gerant)
+
+        serializer = GerantKYCSoumissionSerializer(kyc, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer.save(
+            statut=StatutKYC.EN_ATTENTE,
+            date_decision=None,
+            raison_rejet=None
+        )
+
+        # Envoi SMS de confirmation au gérant
+        sms_service.send_sms(gerant.telephone, "Dossier reçu, réponse sous 24h")
+
+        return Response({
+            "message": "Dossier KYC soumis avec succès",
+            "statut": kyc.statut,
+            "date_soumission": kyc.date_soumission,
+        }, status=status.HTTP_201_CREATED)
+
+
+class GerantKYCStatutView(APIView):
+    """
+    GET /gerants/kyc/statut/
+    Retourne le statut actuel du dossier KYC + motif de rejet le cas échéant.
+    """
+    permission_classes = [IsAuthenticated, IsGerant]
+
+    def get(self, request):
+        kyc = GerantKYC.objects.filter(gerant=request.user).first()
+        if not kyc:
+            return Response(
+                {"statut": "NON_SOUMIS", "detail": "Vous n'avez pas encore soumis de dossier KYC."},
+                status=status.HTTP_200_OK
+            )
+        serializer = GerantKYCStatutSerializer(kyc)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+

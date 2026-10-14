@@ -7,6 +7,10 @@ from .views import (
     GerantStockUpdateView,
     GerantCommandesView,
 )
+from auth_user.views import (
+    GerantKYCSoumettreView,
+    GerantKYCStatutView,
+)
 
 depot_patterns = [
     path('proches/', DepotsProchesView.as_view(), name='depots_proches'),
@@ -18,5 +22,6 @@ gerant_patterns = [
     path('mon-depot/', GerantMonDepotView.as_view(), name='gerant_mon_depot'),
     path('mon-depot/stock/', GerantStockUpdateView.as_view(), name='gerant_stock_update'),
     path('commandes/', GerantCommandesView.as_view(), name='gerant_commandes'),
+    path('kyc/soumettre/', GerantKYCSoumettreView.as_view(), name='gerant_kyc_soumettre'),
+    path('kyc/statut/', GerantKYCStatutView.as_view(), name='gerant_kyc_statut'),
 ]
-
