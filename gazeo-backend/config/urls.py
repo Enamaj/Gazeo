@@ -13,4 +13,5 @@ urlpatterns = [
     path('gerants/', include((gerant_patterns, 'gerants'))),
     path('commandes/', include((commande_patterns, 'commandes'))),
     path('livraisons/', include((livraison_patterns, 'livraisons'))),
+    path('paiements/', include('paiements.urls')),
 ]
