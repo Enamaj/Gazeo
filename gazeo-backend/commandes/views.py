@@ -17,8 +17,11 @@ from .serializers import (
     SuiviPositionInputSerializer,
     SuiviPositionSerializer,
     CommandeDetailSerializer,
+    MissionLivreurSerializer,
+    DisponibiliteSerializer,
 )
 from auth_user.models import User, UserRole
+
 from depots.models import Depot
 from depots.permissions import IsGerant
 from fidelite.models import Transaction as FideliteTransaction, TypeTransaction
@@ -117,7 +120,19 @@ class CreerCommandeView(APIView):
                     f"au dépôt {depot.nom} - Total: {montant_total} FCFA"
                 )
 
+                # Notifications FCM au gérant du dépôt
+                try:
+                    from notifications.services.fcm_service import FCMService
+                    FCMService.notifier_nouvelle_commande(commande)
+                    if depot.stock_6kg < 5:
+                        FCMService.notifier_stock_faible(depot, "6kg", depot.stock_6kg)
+                    if depot.stock_12kg < 5:
+                        FCMService.notifier_stock_faible(depot, "12.5kg", depot.stock_12kg)
+                except Exception as fcm_err:
+                    logger.warning(f"Erreur notification FCM commande #{commande.id}: {fcm_err}")
+
                 return Response({
+
                     "message": "Commande créée avec succès",
                     "commande_id": commande.id,
                     "montant_total": float(montant_total),
@@ -134,25 +149,63 @@ class CreerCommandeView(APIView):
 class AccepterCommandeView(APIView):
     """
     PUT /commandes/{id}/accepter/
-    Action du gérant : accepte la commande et assigne éventuellement un livreur.
+    Action du gérant ou du livreur :
+    - Si gérant : accepte la commande et assigne éventuellement un livreur.
+    - Si livreur : prend en charge la livraison de la commande.
     """
-    permission_classes = [IsAuthenticated, IsGerant]
+    permission_classes = [IsAuthenticated]
 
     def put(self, request, pk):
         try:
-            commande = Commande.objects.get(pk=pk, depot__gerant=request.user)
+            commande = Commande.objects.get(pk=pk)
         except Commande.DoesNotExist:
             return Response(
-                {"detail": "Commande introuvable ou non associée à votre dépôt."},
+                {"detail": "Commande introuvable."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if commande.statut != StatutCommande.EN_ATTENTE:
+        user = request.user
+        est_gerant = (commande.depot.gerant == user or user.is_staff)
+        est_livreur = (user.role == UserRole.LIVREUR)
+
+        if not (est_gerant or est_livreur):
+            return Response(
+                {"detail": "Vous n'êtes pas autorisé à accepter cette commande."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if commande.statut not in (StatutCommande.EN_ATTENTE, StatutCommande.ACCEPTEE):
             return Response(
                 {"detail": f"Impossible d'accepter une commande avec statut '{commande.get_statut_display()}'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Cas Livreur prenant en charge la course
+        if est_livreur and not est_gerant:
+            if commande.livreur and commande.livreur != user:
+                return Response(
+                    {"detail": "Cette commande est déjà prise en charge par un autre livreur."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            commande.livreur = user
+            commande.statut = StatutCommande.ACCEPTEE
+            commande.save(update_fields=['livreur', 'statut', 'updated_at'])
+
+            # Notifier client via FCM
+            try:
+                from notifications.services.fcm_service import FCMService
+                FCMService.notifier_commande_confirmee(commande)
+                FCMService.notifier_livreur_en_route(commande, estimation_minutes=20)
+            except Exception as e:
+                logger.warning(f"Erreur FCM acceptation livreur: {e}")
+
+            return Response({
+                "message": "Mission acceptée avec succès",
+                "statut": commande.statut,
+                "commande": CommandeDetailSerializer(commande).data
+            }, status=status.HTTP_200_OK)
+
+        # Cas Gérant de dépôt
         serializer = AccepterCommandeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         livreur_id = serializer.validated_data.get('livreur_id')
@@ -162,6 +215,12 @@ class AccepterCommandeView(APIView):
             if livreur:
                 commande.livreur = livreur
                 commande.statut = StatutCommande.EN_LIVRAISON
+                try:
+                    from notifications.services.fcm_service import FCMService
+                    FCMService.notifier_nouvelle_mission(livreur, commande)
+                    FCMService.notifier_livreur_en_route(commande, estimation_minutes=20)
+                except Exception as e:
+                    logger.warning(f"Erreur FCM notification livreur/client: {e}")
             else:
                 commande.statut = StatutCommande.ACCEPTEE
         else:
@@ -169,11 +228,19 @@ class AccepterCommandeView(APIView):
 
         commande.save()
 
+        # Notifier le client de la confirmation
+        try:
+            from notifications.services.fcm_service import FCMService
+            FCMService.notifier_commande_confirmee(commande)
+        except Exception as e:
+            logger.warning(f"Erreur FCM confirmation dépôt: {e}")
+
         return Response({
             "message": "Commande acceptée avec succès",
             "statut": commande.statut,
             "commande": CommandeDetailSerializer(commande).data
         }, status=status.HTTP_200_OK)
+
 
 
 class ConfirmerCommandeView(APIView):
@@ -223,7 +290,15 @@ class ConfirmerCommandeView(APIView):
                 type=TypeTransaction.GAIN
             )
 
+        # Notification FCM au client pour noter la livraison
+        try:
+            from notifications.services.fcm_service import FCMService
+            FCMService.notifier_demande_notation(commande)
+        except Exception as e:
+            logger.warning(f"Erreur FCM demande notation: {e}")
+
         return Response({
+
             "message": "Livraison confirmée avec succès. Points de fidélité crédités.",
             "statut": commande.statut,
             "points_gagnes": 10,
@@ -278,11 +353,20 @@ class AnnulerCommandeView(APIView):
 
             logger.info(f"[GAZEO Commande] Commande #{commande.id} annulée. Stocks restitués au dépôt {depot.nom}.")
 
+        # Notification FCM au livreur si déjà assigné
+        if commande.livreur:
+            try:
+                from notifications.services.fcm_service import FCMService
+                FCMService.notifier_mission_annulee(commande.livreur, commande)
+            except Exception as e:
+                logger.warning(f"Erreur FCM annulation mission: {e}")
+
         return Response({
             "message": "Commande annulée avec succès. Le stock a été restitué.",
             "statut": commande.statut,
             "commande": CommandeDetailSerializer(commande).data
         }, status=status.HTTP_200_OK)
+
 
 
 class MesCommandesView(APIView):
@@ -328,10 +412,24 @@ class MettreAJourPositionLivreurView(APIView):
             longitude=lon
         )
 
+        # Si le livreur est à proximité du client (<= 800m ou ~5 min)
+        try:
+            dist_km = calculate_distance_km(
+                lat, lon,
+                commande.latitude_livraison,
+                commande.longitude_livraison
+            )
+            if dist_km <= 0.8:
+                from notifications.services.fcm_service import FCMService
+                FCMService.notifier_livreur_proche(commande)
+        except Exception as e:
+            logger.warning(f"Erreur notification livreur proche: {e}")
+
         return Response({
             "message": "Position GPS enregistrée",
             "position": SuiviPositionSerializer(position).data
         }, status=status.HTTP_201_CREATED)
+
 
 
 class PositionActuelleLivreurView(APIView):
@@ -386,3 +484,159 @@ class PositionActuelleLivreurView(APIView):
             "distance_restante_km": round(dist_km, 2),
             "eta_minutes": minutes_estimees,
         }, status=status.HTTP_200_OK)
+
+
+class RecupererStockCommandeView(APIView):
+    """
+    POST /commandes/{id}/recuperer-stock/
+    Action du livreur au dépôt pour confirmer la récupération des bouteilles :
+    - Statut -> EN_LIVRAISON
+    - Notification FCM au client : 'Livreur en route'
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            commande = Commande.objects.get(pk=pk)
+        except Commande.DoesNotExist:
+            return Response({"detail": "Commande introuvable."}, status=status.HTTP_404_NOT_FOUND)
+
+        if commande.livreur != request.user and not request.user.is_staff:
+            return Response(
+                {"detail": "Vous n'êtes pas le livreur assigné à cette commande."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        commande.statut = StatutCommande.EN_LIVRAISON
+        commande.save(update_fields=['statut', 'updated_at'])
+
+        # Notification FCM au client
+        try:
+            from notifications.services.fcm_service import FCMService
+            FCMService.notifier_livreur_en_route(commande, estimation_minutes=15)
+        except Exception as e:
+            logger.warning(f"Erreur FCM livreur en route: {e}")
+
+        return Response({
+            "message": "Stock récupéré avec succès. Course en cours vers le client.",
+            "statut": commande.statut,
+            "commande": CommandeDetailSerializer(commande).data
+        }, status=status.HTTP_200_OK)
+
+
+class MissionsDisponiblesView(APIView):
+    """
+    GET /livreurs/missions/ ou GET /commandes/missions-disponibles/
+    Liste des missions disponibles (commandes validées sans livreur assigné).
+    Possibilité de filtrer/trier par proximité si coordonnées GPS transmises (?lat=...&lon=...).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        missions = Commande.objects.filter(
+            livreur__isnull=True,
+            statut__in=[StatutCommande.EN_ATTENTE, StatutCommande.ACCEPTEE]
+        ).select_related('depot', 'client').order_by('-created_at')
+
+        serializer = MissionLivreurSerializer(missions, many=True)
+        return Response({
+            "count": missions.count(),
+            "missions": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class TableauBordLivreurView(APIView):
+    """
+    GET /livreurs/tableau-de-bord/
+    Statistiques et données de l'interface livreur :
+    - Disponibilité ON/OFF
+    - Nombre de missions livrées aujourd'hui
+    - Revenus gagnés aujourd'hui (frais de livraison)
+    - Note moyenne (depuis Avis)
+    - Mission active en cours (si existante)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = timezone.localdate()
+
+        livraisons_today = Commande.objects.filter(
+            livreur=user,
+            statut=StatutCommande.LIVREE,
+            updated_at__date=today
+        )
+        missions_count = livraisons_today.count()
+        revenus_total = sum((cmd.frais_livraison for cmd in livraisons_today), Decimal('0.00'))
+
+        # Mission active (ACCEPTEE ou EN_LIVRAISON)
+        mission_active = Commande.objects.filter(
+            livreur=user,
+            statut__in=[StatutCommande.ACCEPTEE, StatutCommande.EN_LIVRAISON]
+        ).select_related('depot', 'client').first()
+
+        # Note moyenne
+        from notation.models import Avis
+        avis_qs = Avis.objects.filter(commande__livreur=user)
+        note_moyenne = 4.8
+        if avis_qs.exists():
+            from django.db.models import Avg
+            avg_val = avis_qs.aggregate(Avg('note'))['note__avg']
+            if avg_val:
+                note_moyenne = round(float(avg_val), 1)
+
+        return Response({
+            "est_disponible": getattr(user, 'est_disponible', True),
+            "missions_jour": missions_count,
+            "revenus_jour": float(revenus_total),
+            "note_moyenne": note_moyenne,
+            "mission_active": MissionLivreurSerializer(mission_active).data if mission_active else None
+        }, status=status.HTTP_200_OK)
+
+
+class ToggleDisponibiliteLivreurView(APIView):
+    """
+    PUT /livreurs/disponibilite/
+    Basculer le statut de disponibilité du livreur (ON/OFF).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request):
+        user = request.user
+        serializer = DisponibiliteSerializer(data=request.data)
+        if serializer.is_valid() and 'est_disponible' in serializer.validated_data:
+            user.est_disponible = serializer.validated_data['est_disponible']
+        else:
+            user.est_disponible = not getattr(user, 'est_disponible', True)
+
+        user.save(update_fields=['est_disponible'])
+
+        return Response({
+            "message": f"Disponibilité mise à jour : {'DISPONIBLE' if user.est_disponible else 'INDISPONIBLE'}",
+            "est_disponible": user.est_disponible
+        }, status=status.HTTP_200_OK)
+
+
+class HistoriqueLivreurView(APIView):
+    """
+    GET /livreurs/historique/
+    Historique des livraisons terminées et gains réalisés par le livreur.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        commandes = Commande.objects.filter(
+            livreur=user,
+            statut=StatutCommande.LIVREE
+        ).select_related('depot', 'client').order_by('-updated_at')
+
+        serializer = MissionLivreurSerializer(commandes, many=True)
+        total_gains = sum((c.frais_livraison for c in commandes), Decimal('0.00'))
+
+        return Response({
+            "total_missions": commandes.count(),
+            "total_revenus": float(total_gains),
+            "historique": serializer.data
+        }, status=status.HTTP_200_OK)
+

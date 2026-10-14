@@ -87,5 +87,72 @@ class ApiService {
     final response = await dio.get('/depots/$id/avis/');
     return response.data['avis'] as List<dynamic>? ?? [];
   }
+
+  // =========================================================================
+  // Méthodes Interface Livreur
+  // =========================================================================
+
+  /// Récupère les données du tableau de bord livreur
+  Future<Map<String, dynamic>> getLivreurTableauDeBord() async {
+    final response = await dio.get('/livreurs/tableau-de-bord/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Active/Désactive la disponibilité du livreur
+  Future<bool> toggleDisponibilite({bool? estDisponible}) async {
+    final data = estDisponible != null ? {'est_disponible': estDisponible} : <String, dynamic>{};
+    final response = await dio.put('/livreurs/disponibilite/', data: data);
+    return response.data['est_disponible'] as bool? ?? true;
+  }
+
+  /// Récupère la liste des missions disponibles
+  Future<List<dynamic>> getMissionsDisponibles() async {
+    final response = await dio.get('/livreurs/missions/');
+    return response.data['missions'] as List<dynamic>? ?? [];
+  }
+
+  /// Accepte une mission pour le livreur connecté
+  Future<Map<String, dynamic>> accepterMission(int commandeId) async {
+    final response = await dio.put('/commandes/$commandeId/accepter/', data: {});
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Confirme la récupération du stock de bouteilles au dépôt
+  Future<Map<String, dynamic>> recupererStock(int commandeId) async {
+    final response = await dio.post('/commandes/$commandeId/recuperer-stock/', data: {});
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Valide la livraison au client par le code OTP à 6 chiffres
+  Future<Map<String, dynamic>> confirmerLivraison(int commandeId, String codeOtp) async {
+    final response = await dio.put(
+      '/commandes/$commandeId/confirmer/',
+      data: {'code_otp': codeOtp},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Récupère l'historique des livraisons et gains du livreur
+  Future<Map<String, dynamic>> getLivreurHistorique() async {
+    final response = await dio.get('/livreurs/historique/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Enregistre la position GPS temps réel du livreur pour le suivi
+  Future<void> mettreAJourPosition(int commandeId, double lat, double lon) async {
+    await dio.post(
+      '/livraisons/$commandeId/position/',
+      data: {'latitude': lat, 'longitude': lon},
+    );
+  }
+
+  /// Enregistre le token FCM de l'appareil
+  Future<void> enregistrerFCMToken(String token, {String deviceType = 'android'}) async {
+    await dio.post(
+      '/notifications/token/',
+      data: {'token': token, 'device_type': deviceType},
+    );
+  }
 }
+
 

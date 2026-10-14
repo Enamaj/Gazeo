@@ -24,6 +24,7 @@ class _CarteScreenState extends State<CarteScreen> {
   List<DepotModel> _depots = [];
   bool _isLoading = true;
   bool _isLoggedIn = false;
+  String? _userRole;
 
   // Filtres
   String? _selectedMarque;
@@ -41,8 +42,15 @@ class _CarteScreenState extends State<CarteScreen> {
 
   Future<void> _checkAuthStatus() async {
     final loggedIn = await _authService.isLoggedIn();
-    if (mounted) setState(() => _isLoggedIn = loggedIn);
+    final role = await _authService.getUserRole();
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+        _userRole = role;
+      });
+    }
   }
+
 
   Future<void> _initPositionAndFetchDepots() async {
     setState(() => _isLoading = true);
@@ -114,7 +122,24 @@ class _CarteScreenState extends State<CarteScreen> {
                 ),
               ),
             ),
+          if (_userRole == 'LIVREUR')
+
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: ElevatedButton.icon(
+                onPressed: () => context.push('/livreur/tableau-de-bord'),
+                icon: const Icon(Icons.two_wheeler, size: 18),
+                label: const Text('Livreur'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber[400],
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+            ),
           IconButton(
+
             icon: const Icon(Icons.filter_list),
             tooltip: 'Filtres',
             onPressed: _showFilterModal,

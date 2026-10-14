@@ -56,7 +56,9 @@ LOCAL_APPS = [
     'paiements.apps.PaiementsConfig',
     'notation.apps.NotationConfig',
     'fidelite.apps.FideliteConfig',
+    'notifications.apps.NotificationsConfig',
 ]
+
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -161,4 +163,8 @@ CLOUDINARY_STORAGE = {
     'API_KEY': env('CLOUDINARY_API_KEY', default='gazeo_key'),
     'API_SECRET': env('CLOUDINARY_API_SECRET', default='gazeo_secret'),
 }
+
+# Firebase Cloud Messaging configuration
+FIREBASE_CREDENTIALS = env('FIREBASE_CREDENTIALS', default=None)
+
 

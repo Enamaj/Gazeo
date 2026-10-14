@@ -48,6 +48,11 @@ class User(AbstractUser):
         default=False,
         help_text="Indique si le numéro de téléphone a été vérifié par OTP"
     )
+    est_disponible = models.BooleanField(
+        default=True,
+        help_text="Disponibilité pour les livraisons (pour le rôle Livreur)"
+    )
+
 
     USERNAME_FIELD = 'telephone'
     REQUIRED_FIELDS = ['username']

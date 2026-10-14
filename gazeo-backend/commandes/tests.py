@@ -214,3 +214,65 @@ class CommandesAPITests(APITestCase):
         self.assertEqual(eta_res.status_code, status.HTTP_200_OK)
         self.assertGreater(eta_res.data['distance_restante_km'], 0)
         self.assertGreaterEqual(eta_res.data['eta_minutes'], 2)
+
+    def test_livreur_flow_complet(self):
+        """Tester le flux complet du livreur : missions dispos, acceptation, récupération stock, OTP."""
+        # Créer commande non assignée
+        commande = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            quantite_6kg=1,
+            quantite_12kg=0,
+            montant_total=Decimal('4000.00'),
+            frais_livraison=Decimal('1000.00'),
+            statut=StatutCommande.EN_ATTENTE,
+            adresse_livraison="Bastos Yaoundé",
+            latitude_livraison=3.8700,
+            longitude_livraison=11.5100,
+            code_confirmation="998877"
+        )
+
+        self.client.force_authenticate(user=self.livreur_user)
+
+        # 1. Lister les missions disponibles
+        missions_res = self.client.get('/livreurs/missions/')
+        self.assertEqual(missions_res.status_code, status.HTTP_200_OK)
+        self.assertTrue(missions_res.data['count'] >= 1)
+
+        # 2. Accepter la mission par le livreur
+        accepter_url = reverse('commandes:commande_accepter', kwargs={'pk': commande.pk})
+        accepter_res = self.client.put(accepter_url, {}, format='json')
+        self.assertEqual(accepter_res.status_code, status.HTTP_200_OK)
+        commande.refresh_from_db()
+        self.assertEqual(commande.livreur, self.livreur_user)
+
+        # 3. Récupérer le stock au dépôt
+        recup_url = reverse('commandes:commande_recuperer_stock', kwargs={'pk': commande.pk})
+        recup_res = self.client.post(recup_url, {}, format='json')
+        self.assertEqual(recup_res.status_code, status.HTTP_200_OK)
+        commande.refresh_from_db()
+        self.assertEqual(commande.statut, StatutCommande.EN_LIVRAISON)
+
+        # 4. Confirmer livraison avec code OTP
+        confirmer_url = reverse('commandes:commande_confirmer', kwargs={'pk': commande.pk})
+        confirmer_res = self.client.put(confirmer_url, {"code_otp": "998877"}, format='json')
+        self.assertEqual(confirmer_res.status_code, status.HTTP_200_OK)
+        commande.refresh_from_db()
+        self.assertEqual(commande.statut, StatutCommande.LIVREE)
+
+        # 5. Consulter le tableau de bord livreur
+        tb_res = self.client.get('/livreurs/tableau-de-bord/')
+        self.assertEqual(tb_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(tb_res.data['missions_jour'], 1)
+        self.assertEqual(tb_res.data['revenus_jour'], 1000.0)
+
+        # 6. Toggle disponibilité
+        dispo_res = self.client.put('/livreurs/disponibilite/', {"est_disponible": False}, format='json')
+        self.assertEqual(dispo_res.status_code, status.HTTP_200_OK)
+        self.assertFalse(dispo_res.data['est_disponible'])
+
+        # 7. Historique
+        histo_res = self.client.get('/livreurs/historique/')
+        self.assertEqual(histo_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(histo_res.data['total_missions'], 1)
+

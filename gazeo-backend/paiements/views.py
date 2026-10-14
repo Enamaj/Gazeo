@@ -152,6 +152,14 @@ class NotchpayWebhookView(APIView):
                     f"Votre paiement GAZEO de {paiement.montant} FCFA pour la commande #{paiement.commande.id} a été validé avec succès !"
                 )
 
+                # Notification push FCM au gérant
+                try:
+                    from notifications.services.fcm_service import FCMService
+                    FCMService.notifier_paiement_recu(paiement)
+                except Exception as fcm_err:
+                    logger.warning(f"Erreur FCM paiement reçu: {fcm_err}")
+
+
         elif any(s in event_status for s in ('failed', 'expired', 'canceled')):
             with transaction.atomic():
                 paiement.statut = StatutPaiement.FAILED

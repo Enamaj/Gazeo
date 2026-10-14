@@ -108,3 +108,52 @@ class CommandeGerantSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
+
+
+class DisponibiliteSerializer(serializers.Serializer):
+    est_disponible = serializers.BooleanField(required=False)
+
+
+class MissionLivreurSerializer(serializers.ModelSerializer):
+    depot_id = serializers.IntegerField(source='depot.id', read_only=True)
+    depot_nom = serializers.CharField(source='depot.nom', read_only=True)
+    depot_adresse = serializers.CharField(source='depot.adresse', read_only=True)
+    depot_quartier = serializers.CharField(source='depot.quartier', read_only=True)
+    depot_telephone = serializers.CharField(source='depot.telephone', read_only=True)
+    depot_latitude = serializers.SerializerMethodField()
+    depot_longitude = serializers.SerializerMethodField()
+    client_telephone = serializers.CharField(source='client.telephone', read_only=True)
+    client_nom = serializers.CharField(source='client.username', read_only=True)
+
+    class Meta:
+        model = Commande
+        fields = (
+            'id',
+            'depot_id',
+            'depot_nom',
+            'depot_adresse',
+            'depot_quartier',
+            'depot_telephone',
+            'depot_latitude',
+            'depot_longitude',
+            'client_telephone',
+            'client_nom',
+            'quantite_6kg',
+            'quantite_12kg',
+            'montant_total',
+            'frais_livraison',
+            'statut',
+            'adresse_livraison',
+            'latitude_livraison',
+            'longitude_livraison',
+            'code_confirmation',
+            'created_at',
+            'updated_at',
+        )
+
+    def get_depot_latitude(self, obj):
+        return obj.depot.localisation.y if obj.depot and obj.depot.localisation else None
+
+    def get_depot_longitude(self, obj):
+        return obj.depot.localisation.x if obj.depot and obj.depot.localisation else None
+
