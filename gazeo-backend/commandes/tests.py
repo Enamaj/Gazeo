@@ -1,3 +1,216 @@
-from django.test import TestCase
+from decimal import Decimal
+from django.contrib.gis.geos import Point
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
 
-# Create your tests here.
+from auth_user.models import User, UserRole
+from depots.models import Depot, MarqueGaz, StatutKYC
+from commandes.models import Commande, SuiviPosition, StatutCommande
+from fidelite.models import Transaction, TypeTransaction
+
+
+class CommandesAPITests(APITestCase):
+    def setUp(self):
+        self.client_user = User.objects.create_user(
+            username="+237699111222",
+            telephone="+237699111222",
+            password="Password123!",
+            role=UserRole.CLIENT,
+            is_verified=True,
+            is_active=True
+        )
+        self.gerant_user = User.objects.create_user(
+            username="+237677333444",
+            telephone="+237677333444",
+            password="Password123!",
+            role=UserRole.GERANT,
+            is_verified=True,
+            is_active=True
+        )
+        self.livreur_user = User.objects.create_user(
+            username="+237655555666",
+            telephone="+237655555666",
+            password="Password123!",
+            role=UserRole.LIVREUR,
+            is_verified=True,
+            is_active=True
+        )
+
+        self.depot = Depot.objects.create(
+            nom="Dépôt Gaz Yaoundé Bastos",
+            adresse="Avenue Bastos",
+            quartier="Bastos",
+            telephone="+237677333444",
+            localisation=Point(11.5180, 3.8850, srid=4326),
+            gerant=self.gerant_user,
+            marque=MarqueGaz.TOTAL,
+            stock_6kg=10,
+            stock_12kg=20,
+            prix_6kg=Decimal('3000.00'),
+            prix_12kg=Decimal('6500.00'),
+            statut_kyc=StatutKYC.VALIDE,
+            est_actif=True
+        )
+
+    def test_creer_commande_success_with_atomic_stock_deduction(self):
+        """Création de commande avec déduction atomique du stock et calcul financier."""
+        self.client.force_authenticate(user=self.client_user)
+        url = reverse('commandes:commande_creer')
+        data = {
+            "depot_id": self.depot.id,
+            "quantite_6kg": 2,
+            "quantite_12kg": 1,
+            "adresse_livraison": "Bastos Rue 12, portail vert",
+            "latitude_livraison": 3.8870,
+            "longitude_livraison": 11.5190,
+        }
+
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['statut'], StatutCommande.EN_ATTENTE)
+
+        # Montant attendu : (2 * 3000) + (1 * 6500) + 1000 = 13500 FCFA
+        self.assertEqual(response.data['montant_total'], 13500.0)
+        self.assertIsNotNone(response.data['code_confirmation'])
+
+        # Vérification déduction atomique du stock
+        self.depot.refresh_from_db()
+        self.assertEqual(self.depot.stock_6kg, 8)   # 10 - 2
+        self.assertEqual(self.depot.stock_12kg, 19) # 20 - 1
+
+    def test_creer_commande_stock_insuffisant_fails(self):
+        """Échec de la commande si le stock disponible est insuffisant."""
+        self.client.force_authenticate(user=self.client_user)
+        url = reverse('commandes:commande_creer')
+        data = {
+            "depot_id": self.depot.id,
+            "quantite_6kg": 50,  # Disponible: 10
+            "quantite_12kg": 0,
+            "adresse_livraison": "Bastos Rue 12",
+            "latitude_livraison": 3.8870,
+            "longitude_livraison": 11.5190,
+        }
+
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Stock insuffisant", response.data['detail'])
+
+        # Stock inchangé
+        self.depot.refresh_from_db()
+        self.assertEqual(self.depot.stock_6kg, 10)
+
+    def test_accepter_commande_gerant(self):
+        """Le gérant du dépôt accepte la commande et peut assigner un livreur."""
+        commande = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            quantite_6kg=1,
+            quantite_12kg=0,
+            montant_total=Decimal('4000.00'),
+            adresse_livraison="Bastos Rue 12",
+            latitude_livraison=3.8870,
+            longitude_livraison=11.5190,
+            code_confirmation="123456"
+        )
+        url = reverse('commandes:commande_accepter', kwargs={'pk': commande.pk})
+
+        self.client.force_authenticate(user=self.gerant_user)
+        data = {"livreur_id": self.livreur_user.id}
+        response = self.client.put(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['statut'], StatutCommande.EN_LIVRAISON)
+
+        commande.refresh_from_db()
+        self.assertEqual(commande.livreur, self.livreur_user)
+
+    def test_confirmer_commande_livreur_and_loyalty_points(self):
+        """Validation livraison avec OTP client -> Statut LIVREE et points fidélité crédités."""
+        commande = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            livreur=self.livreur_user,
+            quantite_6kg=1,
+            quantite_12kg=0,
+            montant_total=Decimal('4000.00'),
+            statut=StatutCommande.EN_LIVRAISON,
+            adresse_livraison="Bastos",
+            latitude_livraison=3.8870,
+            longitude_livraison=11.5190,
+            code_confirmation="789012"
+        )
+        url = reverse('commandes:commande_confirmer', kwargs={'pk': commande.pk})
+        self.client.force_authenticate(user=self.livreur_user)
+
+        # Mauvais code OTP
+        res_bad = self.client.put(url, {"code_otp": "000000"}, format='json')
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Bon code OTP
+        res_ok = self.client.put(url, {"code_otp": "789012"}, format='json')
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_ok.data['statut'], StatutCommande.LIVREE)
+        self.assertEqual(res_ok.data['points_gagnes'], 10)
+
+        # Vérification créditation solde et historique fidélité
+        self.client_user.refresh_from_db()
+        self.assertEqual(self.client_user.points_fidelite, 10)
+        self.assertTrue(Transaction.objects.filter(user=self.client_user, type=TypeTransaction.GAIN, points=10).exists())
+
+    def test_annuler_commande_restores_stock_atomically(self):
+        """L'annulation d'une commande restitue immédiatement le stock au dépôt."""
+        self.depot.stock_6kg = 8
+        self.depot.save()
+
+        commande = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            quantite_6kg=2,
+            quantite_12kg=0,
+            montant_total=Decimal('7000.00'),
+            statut=StatutCommande.EN_ATTENTE,
+            adresse_livraison="Bastos",
+            latitude_livraison=3.8870,
+            longitude_livraison=11.5190,
+            code_confirmation="123456"
+        )
+        url = reverse('commandes:commande_annuler', kwargs={'pk': commande.pk})
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.put(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['statut'], StatutCommande.ANNULEE)
+
+        # Stock restitué : 8 + 2 = 10
+        self.depot.refresh_from_db()
+        self.assertEqual(self.depot.stock_6kg, 10)
+
+    def test_suivi_position_livreur_and_eta(self):
+        """Enregistrement GPS du livreur et calcul de distance / ETA."""
+        commande = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            livreur=self.livreur_user,
+            quantite_6kg=1,
+            quantite_12kg=0,
+            montant_total=Decimal('4000.00'),
+            statut=StatutCommande.EN_LIVRAISON,
+            adresse_livraison="Poste Centrale Yaoundé",
+            latitude_livraison=3.8667,
+            longitude_livraison=11.5167,
+            code_confirmation="123456"
+        )
+        self.client.force_authenticate(user=self.livreur_user)
+
+        # POST position GPS
+        pos_url = reverse('livraisons:livraison_position_update', kwargs={'commande_id': commande.pk})
+        pos_res = self.client.post(pos_url, {"latitude": 3.8800, "longitude": 11.5170}, format='json')
+        self.assertEqual(pos_res.status_code, status.HTTP_201_CREATED)
+
+        # GET position actuelle & ETA
+        eta_url = reverse('livraisons:livraison_position_actuelle', kwargs={'pk': commande.pk})
+        self.client.force_authenticate(user=self.client_user)
+        eta_res = self.client.get(eta_url)
+        self.assertEqual(eta_res.status_code, status.HTTP_200_OK)
+        self.assertGreater(eta_res.data['distance_restante_km'], 0)
+        self.assertGreaterEqual(eta_res.data['eta_minutes'], 2)

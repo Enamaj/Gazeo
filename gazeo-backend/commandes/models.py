@@ -74,3 +74,29 @@ class Commande(models.Model):
 
     def __str__(self):
         return f"Commande #{self.id} - {self.client.telephone} ({self.get_statut_display()})"
+
+
+class SuiviPosition(models.Model):
+    commande = models.ForeignKey(
+        Commande,
+        on_delete=models.CASCADE,
+        related_name='positions',
+        help_text="Commande suivie"
+    )
+    livreur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='positions_enregistrees',
+        help_text="Livreur émetteur du point GPS"
+    )
+    latitude = models.FloatField(help_text="Latitude GPS temps réel")
+    longitude = models.FloatField(help_text="Longitude GPS temps réel")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Suivi de position"
+        verbose_name_plural = "Suivis de position"
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Pos Livreur {self.livreur.telephone} (Cmd #{self.commande.id}) à {self.timestamp.strftime('%H:%M:%S')}"

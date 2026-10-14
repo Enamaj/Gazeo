@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import '../screens/carte_screen.dart';
 import '../screens/fiche_depot_screen.dart';
+import '../screens/suivi_livraison_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -17,6 +18,14 @@ final GoRouter appRouter = GoRouter(
         return FicheDepotScreen(depotId: depotId);
       },
     ),
+    GoRoute(
+      path: '/suivi/:id',
+      builder: (context, state) {
+        final idStr = state.pathParameters['id'] ?? '1';
+        final cmdId = int.tryParse(idStr) ?? 1;
+        final otp = state.uri.queryParameters['otp'];
+        return SuiviLivraisonScreen(commandeId: cmdId, codeConfirmation: otp);
+      },
+    ),
   ],
 );
-
