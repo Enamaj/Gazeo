@@ -8,19 +8,56 @@ from depots.models import Depot, StatutKYC as DepotStatutKYC
 sms_service = TwilioSMSService()
 
 
+import csv
+from django.http import HttpResponse
+
+
+@admin.action(description="📊 Exporter les utilisateurs sélectionnés en CSV")
+def exporter_utilisateurs_csv(modeladmin, request, queryset):
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="utilisateurs_gazeo.csv"'
+    writer = csv.writer(response)
+    writer.writerow([
+        'ID',
+        'Téléphone',
+        'Nom d\'utilisateur',
+        'Rôle',
+        'Numéro Vérifié',
+        'Points Fidélité',
+        'Est Actif',
+        'Date d\'inscription',
+        'Dernière Connexion',
+    ])
+    for u in queryset:
+        writer.writerow([
+            u.id,
+            u.telephone,
+            u.username,
+            u.get_role_display(),
+            'Oui' if u.is_verified else 'Non',
+            u.points_fidelite,
+            'Oui' if u.is_active else 'Non',
+            u.date_joined.strftime('%Y-%m-%d %H:%M:%S'),
+            u.last_login.strftime('%Y-%m-%d %H:%M:%S') if u.last_login else 'Jamais',
+        ])
+    return response
+
+
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     list_display = ('telephone', 'username', 'role', 'is_verified', 'points_fidelite', 'is_staff', 'date_joined')
     list_filter = ('role', 'is_verified', 'is_staff', 'is_active')
     search_fields = ('telephone', 'username', 'email')
     ordering = ('-date_joined',)
+    actions = [exporter_utilisateurs_csv]
     fieldsets = (
         (None, {'fields': ('telephone', 'password')}),
         ('Informations personnelles', {'fields': ('username', 'first_name', 'last_name', 'email')}),
-        ('Rôles & Privilèges GAZEO', {'fields': ('role', 'is_verified', 'points_fidelite', 'fcm_token')}),
+        ('Rôles & Privilèges GAZEO', {'fields': ('role', 'is_verified', 'est_disponible', 'points_fidelite', 'fcm_token')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Dates importantes', {'fields': ('last_login', 'date_joined')}),
     )
+
 
 
 @admin.register(GerantKYC)

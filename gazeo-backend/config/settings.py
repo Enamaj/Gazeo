@@ -60,7 +60,8 @@ LOCAL_APPS = [
 ]
 
 
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+INSTALLED_APPS = ['jazzmin'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -166,5 +167,112 @@ CLOUDINARY_STORAGE = {
 
 # Firebase Cloud Messaging configuration
 FIREBASE_CREDENTIALS = env('FIREBASE_CREDENTIALS', default=None)
+
+# Cache Redis configuration
+REDIS_URL = env('REDIS_URL', default='redis://127.0.0.1:6379/1')
+
+def _check_redis(url):
+    try:
+        import redis
+        client = redis.from_url(url, socket_timeout=0.5, socket_connect_timeout=0.5)
+        client.ping()
+        return True
+    except Exception:
+        return False
+
+_redis_options = {
+    "CLIENT_CLASS": "django_redis.client.DefaultClient",
+    "IGNORE_EXCEPTIONS": True,
+}
+
+if not _check_redis(REDIS_URL):
+    _redis_options["CONNECTION_FACTORY"] = "config.redis_factory.FakeConnectionFactory"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": _redis_options,
+        "KEY_PREFIX": "gazeo",
+        "TIMEOUT": 300,
+    }
+}
+
+# Celery configuration
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Africa/Douala'
+CELERY_TASK_ALWAYS_EAGER = env.bool('CELERY_TASK_ALWAYS_EAGER', default=True)
+
+# Admin Alertes Critiques (Twilio SMS)
+ADMIN_PHONE_NUMBER = env('ADMIN_PHONE_NUMBER', default='+237699000000')
+
+# Jazzmin Admin Theme Configuration
+JAZZMIN_SETTINGS = {
+    "site_title": "GAZEO Admin",
+    "site_header": "GAZEO — Administration Yaoundé",
+    "site_brand": "GAZEO",
+    "welcome_sign": "Bienvenue sur le portail d'administration GAZEO",
+    "copyright": "GAZEO Cameroon SARL",
+    "search_model": ["auth_user.User", "depots.Depot", "commandes.Commande"],
+    "user_avatar": None,
+    "topmenu_links": [
+        {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "Analytics & KPIs", "url": "/admin/analytics/daily/", "permissions": ["auth.view_user"]},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "icons": {
+        "auth_user.User": "fas fa-users",
+        "auth_user.GerantKYC": "fas fa-id-card",
+        "depots.Depot": "fas fa-store-alt",
+        "commandes.Commande": "fas fa-shopping-cart",
+        "commandes.SuiviPosition": "fas fa-map-marker-alt",
+        "paiements.Paiement": "fas fa-money-bill-wave",
+        "paiements.VirementHebdomadaire": "fas fa-file-invoice-dollar",
+        "notifications.DeviceToken": "fas fa-mobile-alt",
+        "notifications.NotificationLog": "fas fa-bell",
+        "notation.Avis": "fas fa-star",
+        "fidelite.Transaction": "fas fa-gift",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-primary",
+    "navbar": "navbar-dark navbar-primary",
+    "no_navbar_border": False,
+    "navbar_fixed": False,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": False,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": True,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    }
+}
+
 
 

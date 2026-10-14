@@ -237,3 +237,44 @@ class DepotsAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['commandes'][0]['id'], 102)
+
+    def test_redis_cache_depots_proches_et_invalidation(self):
+        """Tester la mise en cache Redis de /depots/proches/ et son invalidation lors de la MAJ du stock."""
+        from django.core.cache import cache
+        cache.clear()
+
+        url = f"{reverse('depots:depots_proches')}?lat=3.8667&lon=11.5167&rayon=5000"
+
+        # 1er appel -> MISS (calculé et mis en cache)
+        res1 = self.client.get(url)
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+        self.assertEqual(res1['X-Cache'], 'MISS')
+
+        # 2ème appel -> HIT (servi depuis le cache en < 200ms)
+        res2 = self.client.get(url)
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(res2['X-Cache'], 'HIT')
+        self.assertEqual(len(res2.data['depots']), len(res1.data['depots']))
+
+        # Cache fiche détaillée du dépôt
+        url_detail = reverse('depots:depot_detail', kwargs={'pk': self.depot_bastos.pk})
+        res_det1 = self.client.get(url_detail)
+        self.assertEqual(res_det1.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_det1['X-Cache'], 'MISS')
+
+        res_det2 = self.client.get(url_detail)
+        self.assertEqual(res_det2.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_det2['X-Cache'], 'HIT')
+
+        # Modification du stock par le gérant -> Déclenche l'invalidation
+        url_stock = reverse('gerants:gerant_stock_update')
+        self.client.force_authenticate(user=self.gerant_user)
+        self.client.post(url_stock, {"stock_6kg": 0, "stock_12kg": 0}, format='json')
+
+        # Vérifier que le cache de la fiche a bien été invalidé (prochain appel -> MISS)
+        self.client.force_authenticate(user=self.client_user)
+        res_det3 = self.client.get(url_detail)
+        self.assertEqual(res_det3.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_det3['X-Cache'], 'MISS')
+        self.assertEqual(res_det3.data['stock_6kg'], 0)
+

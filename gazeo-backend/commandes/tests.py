@@ -276,3 +276,87 @@ class CommandesAPITests(APITestCase):
         self.assertEqual(histo_res.status_code, status.HTTP_200_OK)
         self.assertEqual(histo_res.data['total_missions'], 1)
 
+    def test_daily_analytics_kpi_api(self):
+        """Tester l'API GET /admin/analytics/daily/ pour les administrateurs."""
+        # Utilisateur normal -> 403 Forbidden
+        self.client.force_authenticate(user=self.client_user)
+        res_forbidden = self.client.get('/admin/analytics/daily/')
+        self.assertEqual(res_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Création d'un administrateur
+        admin_user = User.objects.create_superuser(
+            username='admin_analytics',
+            telephone='+237699009900',
+            password='Password123!'
+        )
+        self.client.force_authenticate(user=admin_user)
+
+        res_admin = self.client.get('/admin/analytics/daily/')
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        self.assertIn('commandes_aujourdhui', res_admin.data)
+        self.assertIn('chiffre_affaires_aujourdhui', res_admin.data)
+        self.assertIn('commissions_gazeo_aujourdhui', res_admin.data)
+        self.assertIn('depots_en_rupture', res_admin.data)
+        self.assertIn('gerants_kyc_en_attente', res_admin.data)
+        self.assertIn('taux_livraison_reussie_7j', res_admin.data)
+
+    def test_surveillance_commandes_bloquees_task(self):
+        """Tester la tâche Celery d'alerte pour commandes bloquées > 30 minutes sans livreur."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from commandes.tasks import verifier_commandes_bloquees_task
+
+        # Créer une commande datant de 45 minutes sans livreur
+        cmd_bloquee = Commande.objects.create(
+            client=self.client_user,
+            depot=self.depot,
+            quantite_6kg=1,
+            montant_total=Decimal('4000.00'),
+            frais_livraison=Decimal('1000.00'),
+            statut=StatutCommande.EN_ATTENTE,
+            adresse_livraison="Bastos Yaoundé",
+            latitude_livraison=3.8700,
+            longitude_livraison=11.5100,
+            code_confirmation="112233"
+        )
+        Commande.objects.filter(pk=cmd_bloquee.pk).update(
+            created_at=timezone.now() - timedelta(minutes=45)
+        )
+
+        nb_bloquees = verifier_commandes_bloquees_task()
+        self.assertGreaterEqual(nb_bloquees, 1)
+
+    def test_csv_export_actions(self):
+        """Tester les fonctions d'export CSV pour les commandes, virements et utilisateurs."""
+        from commandes.admin import exporter_commandes_csv
+        from paiements.admin import exporter_virements_csv
+        from auth_user.admin import exporter_utilisateurs_csv
+        from paiements.models import VirementHebdomadaire
+
+        # 1. Export Commandes CSV
+        cmd_qs = Commande.objects.all()
+        res_cmd = exporter_commandes_csv(None, None, cmd_qs)
+        self.assertEqual(res_cmd.status_code, 200)
+        self.assertEqual(res_cmd['Content-Type'], 'text/csv; charset=utf-8')
+        self.assertIn('commandes_gazeo.csv', res_cmd['Content-Disposition'])
+
+        # 2. Export Utilisateurs CSV
+        user_qs = User.objects.all()
+        res_user = exporter_utilisateurs_csv(None, None, user_qs)
+        self.assertEqual(res_user.status_code, 200)
+        self.assertIn('utilisateurs_gazeo.csv', res_user['Content-Disposition'])
+
+        # 3. Export Virements CSV
+        virement = VirementHebdomadaire.objects.create(
+            gerant=self.gerant_user,
+            total_brut=Decimal('50000.00'),
+            commission_gazeo=Decimal('750.00'),
+            net_a_verser=Decimal('49250.00'),
+            periode_debut='2026-10-01',
+            periode_fin='2026-10-07'
+        )
+        res_vir = exporter_virements_csv(None, None, VirementHebdomadaire.objects.filter(pk=virement.pk))
+        self.assertEqual(res_vir.status_code, 200)
+        self.assertIn('virements_gerants_gazeo.csv', res_vir['Content-Disposition'])
+
+

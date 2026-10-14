@@ -159,6 +159,13 @@ class NotchpayWebhookView(APIView):
                 except Exception as fcm_err:
                     logger.warning(f"Erreur FCM paiement reçu: {fcm_err}")
 
+                # Réinitialiser le compteur d'échecs consécutifs
+                try:
+                    from django.core.cache import cache
+                    cache.delete('notchpay_echecs_consecutifs')
+                except Exception:
+                    pass
+
 
         elif any(s in event_status for s in ('failed', 'expired', 'canceled')):
             with transaction.atomic():
@@ -179,7 +186,19 @@ class NotchpayWebhookView(APIView):
 
                 logger.warning(f"[Notchpay Webhook] Paiement {reference} ÉCHOUÉ ({event_status}). Commande annulée.")
 
+                # Suivi des échecs consécutifs et alerte admin si > 3 (Prompt 7.2)
+                try:
+                    from django.core.cache import cache
+                    from .tasks import alerter_echec_paiement_repete_task
+                    echecs = cache.get('notchpay_echecs_consecutifs', 0) + 1
+                    cache.set('notchpay_echecs_consecutifs', echecs, timeout=3600)
+                    if echecs > 3:
+                        alerter_echec_paiement_repete_task.delay(echecs)
+                except Exception as alert_err:
+                    logger.warning(f"Erreur déclenchement alerte échec paiement répété: {alert_err}")
+
         return Response({"status": "received", "statut_paiement": paiement.statut}, status=status.HTTP_200_OK)
+
 
 
 class RembourserPaiementView(APIView):

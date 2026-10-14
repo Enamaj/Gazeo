@@ -1,0 +1,96 @@
+{% extends "admin/index.html" %}
+{% load i18n static admin_kpis humanize %}
+
+{% block content %}
+{% get_admin_kpis as kpis %}
+
+<div class="container-fluid mb-4">
+    <!-- Ligne des 4 Cartes KPI GAZEO -->
+    <div class="row">
+        <!-- KPI 1 : Commandes & CA du jour -->
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-info">
+                <div class="inner">
+                    <h3>{{ kpis.nb_commandes_jour }}</h3>
+                    <p>Commandes Aujourd'hui<br><strong>{{ kpis.ca_jour }} FCFA</strong></p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-shopping-cart"></i>
+                </div>
+                <a href="/admin/commandes/commande/" class="small-box-footer">
+                    Voir les commandes <i class="fas fa-arrow-circle-right"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- KPI 2 : Gérants en attente de KYC -->
+        <div class="col-lg-3 col-6">
+            <div class="small-box {% if kpis.nb_kyc_attente > 0 %}bg-warning{% else %}bg-secondary{% endif %}">
+                <div class="inner">
+                    <h3>{{ kpis.nb_kyc_attente }}</h3>
+                    <p>Gérants en attente KYC<br><small>Validation requise</small></p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-id-card"></i>
+                </div>
+                <a href="/admin/auth_user/gerantkyc/?statut__exact=EN_ATTENTE" class="small-box-footer">
+                    Vérifier les dossiers <i class="fas fa-arrow-circle-right"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- KPI 3 : Dépôts en rupture de stock -->
+        <div class="col-lg-3 col-6">
+            <div class="small-box {% if kpis.nb_depots_rupture > 0 %}bg-danger{% else %}bg-success{% endif %}">
+                <div class="inner">
+                    <h3>{{ kpis.nb_depots_rupture }}</h3>
+                    <p>Dépôts en Rupture Totale<br><small>Stock 6kg & 12.5kg = 0</small></p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <a href="/admin/depots/depot/" class="small-box-footer">
+                    Superviser les dépôts <i class="fas fa-arrow-circle-right"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- KPI 4 : Taux de livraison réussie -->
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-success">
+                <div class="inner">
+                    <h3>{{ kpis.taux_livraison_7j }} %</h3>
+                    <p>Taux de Livraison (7 jours)<br><small>Qualité de service client</small></p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-truck"></i>
+                </div>
+                <a href="/admin/analytics/daily/" class="small-box-footer">
+                    Rapport Analytics JSON <i class="fas fa-arrow-circle-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertes contextuelles si KYC en attente -->
+    {% if kpis.nb_kyc_attente > 0 %}
+    <div class="alert alert-warning alert-dismissible">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+        <h5><i class="icon fas fa-exclamation-triangle"></i> Dossiers KYC Gérants en attente !</h5>
+        Il y a {{ kpis.nb_kyc_attente }} dossier(s) KYC en attente de vérification par un administrateur.
+        <ul class="mb-0 mt-2">
+            {% for kyc in kpis.kyc_attente_liste %}
+            <li>
+                <a href="/admin/auth_user/gerantkyc/{{ kyc.id }}/change/" class="text-dark font-weight-bold">
+                    Gérant {{ kyc.gerant.telephone }} ({{ kyc.gerant.username }})
+                </a> — Soumis le {{ kyc.date_soumission|date:"d/m/Y H:i" }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+{{ block.super }}
+{% endblock %}
+

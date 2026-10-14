@@ -1,3 +1,6 @@
+import logging
+import time
+from django.core.cache import cache
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
@@ -16,9 +19,19 @@ from .serializers import (
     DepotStockUpdateSerializer,
     AvisPublicSerializer,
 )
+from .services.cache_service import (
+    CACHE_TTL_DEPOTS_PROCHES,
+    CACHE_TTL_DEPOT_DETAIL,
+    get_depots_proches_cache_key,
+    get_depot_detail_cache_key,
+    invalider_cache_depot,
+)
 from notation.models import Avis
 from commandes.models import Commande
 from commandes.serializers import CommandeGerantSerializer
+
+logger = logging.getLogger(__name__)
+
 
 
 class DepotsProchesView(APIView):
@@ -65,6 +78,26 @@ class DepotsProchesView(APIView):
         # Filtre optionnel par quartier
         quartier = request.query_params.get('quartier')
 
+        # Clé de cache déterministe (Prompt 7.1)
+        cache_key = get_depots_proches_cache_key(
+            lat=latitude,
+            lon=longitude,
+            rayon=rayon_metres,
+            marque=marque,
+            stock_uniquement=stock_filter,
+            quartier=quartier
+        )
+
+        t_start = time.perf_counter()
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            duration_ms = (time.perf_counter() - t_start) * 1000
+            logger.info(f"[Cache HIT] /depots/proches/ - {cache_key} ({duration_ms:.2f}ms)")
+            resp = Response(cached_data, status=status.HTTP_200_OK)
+            resp['X-Cache'] = 'HIT'
+            resp['X-Response-Time-ms'] = f"{duration_ms:.2f}"
+            return resp
+
         point_utilisateur = Point(longitude, latitude, srid=4326)
 
         queryset = Depot.objects.filter(
@@ -88,7 +121,7 @@ class DepotsProchesView(APIView):
         )
 
         serializer = DepotProcheSerializer(depots, many=True)
-        return Response({
+        response_data = {
             "count": len(serializer.data),
             "rayon_metres": rayon_metres,
             "centre": {
@@ -96,17 +129,39 @@ class DepotsProchesView(APIView):
                 "longitude": longitude
             },
             "depots": serializer.data
-        }, status=status.HTTP_200_OK)
+        }
+
+        # Mise en cache 2 minutes (120 secondes)
+        cache.set(cache_key, response_data, timeout=CACHE_TTL_DEPOTS_PROCHES)
+        duration_ms = (time.perf_counter() - t_start) * 1000
+        logger.info(f"[Cache MISS] /depots/proches/ - {cache_key} calculé en {duration_ms:.2f}ms")
+
+        resp = Response(response_data, status=status.HTTP_200_OK)
+        resp['X-Cache'] = 'MISS'
+        resp['X-Response-Time-ms'] = f"{duration_ms:.2f}"
+        return resp
 
 
 class DepotDetailView(APIView):
     """
     GET /depots/{id}/
     Fiche détaillée d'un dépôt avec stocks, prix et notes.
+    Mise en cache 5 minutes (300 secondes), invalidé à chaque PUT.
     """
     permission_classes = [AllowAny]
 
     def get(self, request, pk):
+        cache_key = get_depot_detail_cache_key(pk)
+        t_start = time.perf_counter()
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            duration_ms = (time.perf_counter() - t_start) * 1000
+            logger.info(f"[Cache HIT] /depots/{pk}/ ({duration_ms:.2f}ms)")
+            resp = Response(cached_data, status=status.HTTP_200_OK)
+            resp['X-Cache'] = 'HIT'
+            resp['X-Response-Time-ms'] = f"{duration_ms:.2f}"
+            return resp
+
         try:
             depot = Depot.objects.get(pk=pk, est_actif=True)
         except Depot.DoesNotExist:
@@ -116,7 +171,15 @@ class DepotDetailView(APIView):
             )
 
         serializer = DepotDetailSerializer(depot)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        cache.set(cache_key, serializer.data, timeout=CACHE_TTL_DEPOT_DETAIL)
+        duration_ms = (time.perf_counter() - t_start) * 1000
+        logger.info(f"[Cache MISS] /depots/{pk}/ calculé en {duration_ms:.2f}ms")
+
+        resp = Response(serializer.data, status=status.HTTP_200_OK)
+        resp['X-Cache'] = 'MISS'
+        resp['X-Response-Time-ms'] = f"{duration_ms:.2f}"
+        return resp
+
 
 
 class DepotAvisListView(APIView):
@@ -178,6 +241,7 @@ class GerantMonDepotView(APIView):
         serializer = DepotUpdateSerializer(depot, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            invalider_cache_depot(depot.id)
             return Response(DepotDetailSerializer(depot).data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -204,6 +268,7 @@ class GerantStockUpdateView(APIView):
         depot.stock_6kg = serializer.validated_data['stock_6kg']
         depot.stock_12kg = serializer.validated_data['stock_12kg']
         depot.save(update_fields=['stock_6kg', 'stock_12kg', 'updated_at'])
+        invalider_cache_depot(depot.id)
 
         return Response({
             "message": "Stock mis à jour avec succès",
@@ -211,6 +276,7 @@ class GerantStockUpdateView(APIView):
             "stock_12kg": depot.stock_12kg,
             "stock_disponible": depot.stock_disponible
         }, status=status.HTTP_200_OK)
+
 
 
 class GerantCommandesView(APIView):
