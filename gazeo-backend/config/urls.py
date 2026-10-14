@@ -7,8 +7,10 @@ from depots.urls import depot_patterns, gerant_patterns
 from commandes.urls import commande_patterns, livraison_patterns, livreur_patterns
 
 from commandes.analytics_views import DailyAnalyticsView
+from config.views import HealthCheckView
 
 urlpatterns = [
+    path('health/', HealthCheckView.as_view(), name='health_check'),
     path('admin/analytics/daily/', DailyAnalyticsView.as_view(), name='admin_daily_analytics'),
     path('admin/', admin.site.urls),
 

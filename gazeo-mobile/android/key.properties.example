@@ -1,0 +1,9 @@
+# Modèle de configuration pour la signature du build Release Google Play Store
+# Copier ce fichier sous android/key.properties et renseigner vos mots de passe réels.
+# CE FICHIER key.properties EST EXCLU DU GIT PAR .gitignore ET NE DOIT JAMAIS ÊTRE COMMITÉ.
+
+keyAlias=gazeo
+keyPassword=votre_mot_de_passe_cle_securise
+storeFile=/chemin/vers/votre/gazeo-release.jks
+storePassword=votre_mot_de_passe_store_securise
+

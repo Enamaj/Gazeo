@@ -1,0 +1,4 @@
+web: gunicorn config.wsgi:application --config gunicorn.conf.py
+worker: celery -A config worker --loglevel=info --concurrency=4
+beat: celery -A config beat --loglevel=info
+

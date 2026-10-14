@@ -359,4 +359,14 @@ class CommandesAPITests(APITestCase):
         self.assertEqual(res_vir.status_code, 200)
         self.assertIn('virements_gerants_gazeo.csv', res_vir['Content-Disposition'])
 
+    def test_health_check_endpoint(self):
+        """Tester l'endpoint /health/ pour Railway Pro et UptimeRobot."""
+        url = reverse('health_check')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'healthy')
+        self.assertEqual(response.data['services']['database'], 'connected')
+        self.assertEqual(response.data['services']['cache'], 'connected')
+
+
 
