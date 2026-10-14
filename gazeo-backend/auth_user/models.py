@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class UserRole(models.TextChoices):
@@ -20,7 +21,7 @@ class User(AbstractUser):
         max_length=10,
         choices=UserRole.choices,
         default=UserRole.CLIENT,
-        help_text="Rôle utilisateur"
+        help_text="Rôle de l'utilisateur"
     )
     fcm_token = models.CharField(
         max_length=255,
@@ -30,11 +31,23 @@ class User(AbstractUser):
     )
     points_fidelite = models.PositiveIntegerField(
         default=0,
-        help_text="Points de fidélité accumulés"
+        help_text="Solde de points fidélité"
+    )
+
+    # Champs de gestion OTP d'authentification
+    otp_code = models.CharField(max_length=6, blank=True, null=True)
+    otp_created_at = models.DateTimeField(blank=True, null=True)
+    is_verified = models.BooleanField(
+        default=False,
+        help_text="Indique si le numéro de téléphone a été vérifié par OTP"
     )
 
     USERNAME_FIELD = 'telephone'
     REQUIRED_FIELDS = ['username']
+
+    class Meta:
+        verbose_name = "Utilisateur"
+        verbose_name_plural = "Utilisateurs"
 
     def __str__(self):
         return f"{self.telephone} ({self.get_role_display()})"
