@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.contrib.gis.db import models as gis_models
+from django.contrib.gis.geos import Point
 from django.db import models
 
 
@@ -21,9 +23,14 @@ class Depot(models.Model):
     quartier = models.CharField(max_length=100, help_text="Quartier à Yaoundé (ex: Bastos, Melen, Biyem-Assi)")
     telephone = models.CharField(max_length=20, help_text="Téléphone de contact du dépôt")
 
-    # Coordonnées géographiques (migrées vers PostGIS PointField en Phase 2)
-    latitude = models.FloatField(help_text="Latitude GPS (ex: 3.8667)")
-    longitude = models.FloatField(help_text="Longitude GPS (ex: 11.5167)")
+    # Coordonnées géospatiales PostGIS (Point SRID 4326 avec index spatial GiST)
+    localisation = gis_models.PointField(
+        srid=4326,
+        geography=True,
+        spatial_index=True,
+        default=Point(11.5167, 3.8667),
+        help_text="Coordonnées géographiques GPS (Longitude, Latitude)"
+    )
 
     gerant = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -77,3 +84,19 @@ class Depot(models.Model):
 
     def __str__(self):
         return f"{self.nom} - {self.quartier} ({self.get_marque_display()})"
+
+    @property
+    def latitude(self) -> float | None:
+        return self.localisation.y if self.localisation else None
+
+    @property
+    def longitude(self) -> float | None:
+        return self.localisation.x if self.localisation else None
+
+    @property
+    def stock_disponible(self) -> int:
+        return (self.stock_6kg or 0) + (self.stock_12kg or 0)
+
+    def set_coordinates(self, latitude: float, longitude: float):
+        """Affecte les coordonnées géographiques au format Point(lon, lat)."""
+        self.localisation = Point(float(longitude), float(latitude), srid=4326)
