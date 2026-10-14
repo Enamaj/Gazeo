@@ -1,0 +1,49 @@
+# Environment variables and secrets (NEVER COMMIT SENSITIVE ENVS)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.jks
+gazeo-release.jks
+key.properties
+
+# Python & Django
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.sqlite3
+staticfiles/
+media/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+/build/
+
+# IDEs & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
