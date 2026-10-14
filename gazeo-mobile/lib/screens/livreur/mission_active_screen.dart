@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -103,7 +104,7 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
         await _apiService.mettreAJourPosition(widget.commandeId, pos.latitude, pos.longitude);
       }
     } catch (e) {
-      debugPrint('[MissionActive] Erreur localisation GPS: $e');
+      if (kDebugMode) debugPrint('[MissionActive] Erreur localisation GPS: $e');
     }
   }
 

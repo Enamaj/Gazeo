@@ -299,3 +299,63 @@ class AuthAPITests(APITestCase):
         self.assertEqual(res_statut_apres.status_code, status.HTTP_200_OK)
         self.assertEqual(res_statut_apres.data['statut'], 'EN_ATTENTE')
 
+    def test_connexion_anti_bruteforce_lockout(self):
+        """Protection anti-bruteforce : verrouillage après 5 échecs consécutifs."""
+        from django.core.cache import cache
+        cache.clear()
+
+        user = User.objects.create_user(
+            username="+237699112233",
+            telephone="+237699112233",
+            password="GoodPassword123!",
+            role=UserRole.CLIENT,
+            is_verified=True,
+            is_active=True
+        )
+
+        connexion_url = reverse('auth_connexion')
+        bad_payload = {"telephone": "+237699112233", "password": "WrongPassword!"}
+
+        # 5 tentatives infructueuses
+        for _ in range(5):
+            res = self.client.post(connexion_url, bad_payload, format='json')
+            self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 6ème tentative : compte temporairement verrouillé (HTTP 429)
+        res_locked = self.client.post(connexion_url, bad_payload, format='json')
+        self.assertEqual(res_locked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("temporairement verrouillé", res_locked.data['detail'])
+
+    def test_deconnexion_token_blacklisting(self):
+        """Déconnexion sécurisée : révocation (blacklist) du refresh token JWT."""
+        user = User.objects.create_user(
+            username="+237699223344",
+            telephone="+237699223344",
+            password="StrongPassword123!",
+            role=UserRole.CLIENT,
+            is_verified=True,
+            is_active=True
+        )
+
+        # Connexion pour obtenir les tokens
+        connexion_url = reverse('auth_connexion')
+        res_login = self.client.post(connexion_url, {
+            "telephone": "+237699223344",
+            "password": "StrongPassword123!"
+        }, format='json')
+        self.assertEqual(res_login.status_code, status.HTTP_200_OK)
+        refresh_token = res_login.data['tokens']['refresh']
+        access_token = res_login.data['tokens']['access']
+
+        # Déconnexion avec blacklist du refresh token
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        deconnexion_url = reverse('auth_deconnexion')
+        res_logout = self.client.post(deconnexion_url, {"refresh": refresh_token}, format='json')
+        self.assertEqual(res_logout.status_code, status.HTTP_200_OK)
+        self.assertIn("Jeton révoqué avec succès", res_logout.data['message'])
+
+        # Vérifier que le refresh token révoqué ne peut plus être utilisé pour refresh
+        refresh_url = reverse('auth_token_refresh')
+        res_refresh = self.client.post(refresh_url, {"refresh": refresh_token}, format='json')
+        self.assertEqual(res_refresh.status_code, status.HTTP_401_UNAUTHORIZED)
+

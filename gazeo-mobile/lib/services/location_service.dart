@@ -10,7 +10,7 @@ class LocationService {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        debugPrint('[LocationService] Service de localisation désactivé, utilisation de Yaoundé');
+        if (kDebugMode) debugPrint('[LocationService] Service de localisation désactivé, utilisation de Yaoundé');
         return defaultYaounde;
       }
 
@@ -18,13 +18,13 @@ class LocationService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          debugPrint('[LocationService] Permission refusée, utilisation de Yaoundé');
+          if (kDebugMode) debugPrint('[LocationService] Permission refusée, utilisation de Yaoundé');
           return defaultYaounde;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        debugPrint('[LocationService] Permission refusée définitivement, utilisation de Yaoundé');
+        if (kDebugMode) debugPrint('[LocationService] Permission refusée définitivement, utilisation de Yaoundé');
         return defaultYaounde;
       }
 
@@ -36,7 +36,7 @@ class LocationService {
       );
       return LatLng(position.latitude, position.longitude);
     } catch (e) {
-      debugPrint('[LocationService] Exception localisation: $e');
+      if (kDebugMode) debugPrint('[LocationService] Exception localisation: $e');
       return defaultYaounde;
     }
   }

@@ -3,6 +3,7 @@ import random
 from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -198,6 +199,7 @@ class ConnexionView(APIView):
     """
     POST /auth/connexion/
     Connexion via numéro de téléphone et mot de passe.
+    Protection anti-bruteforce OWASP : 5 échecs -> verrouillage 15 min.
     Retourne : access_token (15min) + refresh_token (7j).
     """
     permission_classes = [AllowAny]
@@ -210,8 +212,25 @@ class ConnexionView(APIView):
         telephone = serializer.validated_data['telephone']
         password = serializer.validated_data['password']
 
+        # Protection anti-bruteforce OWASP
+        lock_key = f"gazeo:login:locked:{telephone}"
+        if cache.get(lock_key):
+            return Response(
+                {"detail": "Trop de tentatives de connexion échouées. Compte temporairement verrouillé pendant 15 minutes."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
         user = User.objects.filter(telephone=telephone).first()
         if not user or not user.check_password(password):
+            fail_key = f"gazeo:login:failed:{telephone}"
+            failures = (cache.get(fail_key) or 0) + 1
+            if failures >= 5:
+                cache.set(lock_key, True, timeout=900)
+                cache.delete(fail_key)
+                logger.warning(f"[Sécurité OWASP] Numéro {telephone} verrouillé pour 15 min suite à 5 tentatives infructueuses.")
+            else:
+                cache.set(fail_key, failures, timeout=900)
+
             return Response(
                 {"detail": "Identifiants invalides. Vérifiez le numéro et le mot de passe."},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -223,6 +242,10 @@ class ConnexionView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # Réinitialisation des tentatives échouées après connexion réussie
+        cache.delete(f"gazeo:login:failed:{telephone}")
+        cache.delete(lock_key)
+
         tokens = get_tokens_for_user(user)
 
         return Response({
@@ -230,6 +253,35 @@ class ConnexionView(APIView):
             "tokens": tokens,
             "user": UserProfileSerializer(user).data
         }, status=status.HTTP_200_OK)
+
+
+class DeconnexionView(APIView):
+    """
+    POST /auth/deconnexion/
+    Déconnexion sécurisée par révocation (blacklist) du refresh token JWT.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response(
+                {"detail": "Le jeton refresh est requis pour la déconnexion."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response(
+                {"message": "Déconnexion réussie. Jeton révoqué avec succès."},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Erreur lors de la révocation du jeton : {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ProfilView(APIView):

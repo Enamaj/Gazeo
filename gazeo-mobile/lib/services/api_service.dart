@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import '../models/depot.dart';
 import 'auth_service.dart';
@@ -30,6 +31,16 @@ class ApiService {
         },
       ),
     );
+
+    // Sécurité OWASP : Validation stricte des certificats SSL/TLS en environnement distant / HTTPS
+    if (!kIsWeb && dio.httpClientAdapter is IOHttpClientAdapter) {
+      (dio.httpClientAdapter as IOHttpClientAdapter).validateCertificate = (certificate, host, port) {
+        if (host.contains('gazeo.cm') || host.contains('railway.app')) {
+          return certificate != null;
+        }
+        return true;
+      };
+    }
 
     // Intercepteur pour injecter le token JWT si disponible
     dio.interceptors.add(
@@ -71,7 +82,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      debugPrint('[ApiService] Erreur getDepotsProches: $e');
+      if (kDebugMode) debugPrint('[ApiService] Erreur getDepotsProches: $e');
       rethrow;
     }
   }
