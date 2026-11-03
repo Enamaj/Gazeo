@@ -106,16 +106,26 @@ class InscriptionView(APIView):
                 is_active=False
             )
 
-        # Envoi SMS via Twilio (ou simulation dev)
+        # Envoi SMS via Twilio; le code de test n'est exposé qu'en mode DEBUG.
         sms_sent = sms_service.send_otp(telephone, otp_code)
         if not sms_sent:
             logger.warning(f"[InscriptionView] L'envoi SMS a rencontré une erreur pour {telephone}")
+            if not settings.DEBUG:
+                return Response(
+                    {"detail": "Le code OTP n'a pas pu être envoyé. Veuillez réessayer plus tard."},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
         response_payload = {
-            "message": "OTP envoyé",
+            "message": (
+                "OTP envoyé"
+                if sms_sent
+                else "Mode développement : SMS non envoyé, code disponible pour les tests."
+            ),
             "telephone": telephone,
+            "sms_sent": sms_sent,
         }
-        if settings.DEBUG:
+        if settings.DEBUG and not sms_sent:
             response_payload["otp_code_debug"] = otp_code
 
         return Response(response_payload, status=status.HTTP_201_CREATED)
@@ -314,28 +324,45 @@ class ProfilView(APIView):
 class GerantKYCSoumettreView(APIView):
     """
     POST /gerants/kyc/soumettre/
-    Upload des 3 documents KYC (cni_recto, cni_verso, photo_depot) vers Cloudinary.
-    Envoi d'un SMS de confirmation : 'Dossier reçu, réponse sous 24h'.
+    Upload des pièces KYC vers Cloudinary.
     """
     permission_classes = [IsAuthenticated, IsGerant]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         gerant = request.user
-        kyc, created = GerantKYC.objects.get_or_create(gerant=gerant)
+        if not gerant.is_verified:
+            return Response(
+                {"detail": "Le numéro de téléphone doit être vérifié avant le dépôt du dossier."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        serializer = GerantKYCSoumissionSerializer(kyc, data=request.data, partial=True)
+        kyc = GerantKYC.objects.filter(gerant=gerant).first()
+        if kyc and kyc.statut in (StatutKYC.EN_ATTENTE, StatutKYC.VALIDE):
+            return Response(
+                {"detail": "Votre dossier est déjà en cours de traitement ou validé."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = GerantKYCSoumissionSerializer(kyc, data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer.save(
+        kyc = serializer.save(
+            gerant=gerant,
             statut=StatutKYC.EN_ATTENTE,
             date_decision=None,
-            raison_rejet=None
+            raison_rejet=None,
+            valide_par=None,
         )
+        kyc.date_soumission = timezone.now()
+        kyc.save(update_fields=['date_soumission'])
 
         # Envoi SMS de confirmation au gérant
-        sms_service.send_sms(gerant.telephone, "Dossier reçu, réponse sous 24h")
+        sms_service.send_sms(
+            gerant.telephone,
+            "Votre dossier GAZEO est reçu. Délai indicatif de vérification : 24 à 48 h ouvrables."
+        )
 
         return Response({
             "message": "Dossier KYC soumis avec succès",
@@ -360,4 +387,3 @@ class GerantKYCStatutView(APIView):
             )
         serializer = GerantKYCStatutSerializer(kyc)
         return Response(serializer.data, status=status.HTTP_200_OK)
-

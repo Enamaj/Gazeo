@@ -73,9 +73,42 @@ class GerantKYC(models.Model):
         limit_choices_to={'role': UserRole.GERANT},
         help_text="Gérant associé au dossier KYC"
     )
-    cni_recto = CloudinaryField('cni_recto', folder='gazeo/kyc', blank=True, null=True)
-    cni_verso = CloudinaryField('cni_verso', folder='gazeo/kyc', blank=True, null=True)
-    photo_depot = CloudinaryField('photo_depot', folder='gazeo/kyc', blank=True, null=True)
+    cni_recto = CloudinaryField(
+        'cni_recto',
+        folder='gazeo/kyc',
+        type='authenticated',
+        blank=True,
+        null=True,
+    )
+    cni_verso = CloudinaryField(
+        'cni_verso',
+        folder='gazeo/kyc',
+        type='authenticated',
+        blank=True,
+        null=True,
+    )
+    photo_depot = CloudinaryField(
+        'photo_depot',
+        folder='gazeo/kyc',
+        type='authenticated',
+        blank=True,
+        null=True,
+    )
+    photo_depot_interieur = CloudinaryField(
+        'photo_depot_interieur',
+        folder='gazeo/kyc',
+        type='authenticated',
+        blank=True,
+        null=True,
+    )
+    document_commercial = CloudinaryField(
+        'document_commercial',
+        folder='gazeo/kyc',
+        type='authenticated',
+        resource_type='raw',
+        blank=True,
+        null=True,
+    )
     statut = models.CharField(
         max_length=20,
         choices=StatutKYC.choices,

@@ -7,6 +7,7 @@ from django.contrib.gis.measure import D
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -15,8 +16,8 @@ from .permissions import IsGerant, IsOwnerDepot
 from .serializers import (
     DepotProcheSerializer,
     DepotDetailSerializer,
-    DepotUpdateSerializer,
     DepotStockUpdateSerializer,
+    DepotProfileSerializer,
     AvisPublicSerializer,
 )
 from .services.cache_service import (
@@ -29,6 +30,7 @@ from .services.cache_service import (
 from notation.models import Avis
 from commandes.models import Commande
 from commandes.serializers import CommandeGerantSerializer
+from auth_user.models import GerantKYC, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +111,9 @@ class DepotsProchesView(APIView):
             queryset = queryset.filter(Q(stock_6kg__gt=0) | Q(stock_12kg__gt=0))
 
         if marque:
-            queryset = queryset.filter(marque__iexact=marque)
+            queryset = queryset.filter(
+                marques_disponibles__icontains=marque
+            )
 
         if quartier:
             queryset = queryset.filter(quartier__icontains=quartier)
@@ -215,6 +219,7 @@ class GerantMonDepotView(APIView):
     Réservé aux utilisateurs authentifiés avec le rôle GERANT.
     """
     permission_classes = [IsAuthenticated, IsGerant]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self, user):
         depot = Depot.objects.filter(gerant=user).first()
@@ -230,6 +235,37 @@ class GerantMonDepotView(APIView):
         serializer = DepotDetailSerializer(depot)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def post(self, request):
+        if not request.user.is_verified:
+            return Response(
+                {"detail": "Vérifiez votre numéro de téléphone avant de configurer le dépôt."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        kyc = GerantKYC.objects.filter(gerant=request.user).first()
+        if not kyc or kyc.statut != StatutKYC.VALIDE:
+            return Response(
+                {"detail": "Votre dossier gérant doit être validé avant la création du dépôt."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if self.get_object(request.user):
+            return Response(
+                {"detail": "Un dépôt est déjà associé à votre compte."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = DepotProfileSerializer(
+            data=request.data,
+            context={'request': request},
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        depot = serializer.save()
+        invalider_cache_depot(depot.id)
+        return Response(
+            DepotDetailSerializer(depot).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     def put(self, request):
         depot = self.get_object(request.user)
         if not depot:
@@ -238,7 +274,7 @@ class GerantMonDepotView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = DepotUpdateSerializer(depot, data=request.data, partial=True)
+        serializer = DepotProfileSerializer(depot, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             invalider_cache_depot(depot.id)
@@ -267,7 +303,11 @@ class GerantStockUpdateView(APIView):
 
         depot.stock_6kg = serializer.validated_data['stock_6kg']
         depot.stock_12kg = serializer.validated_data['stock_12kg']
-        depot.save(update_fields=['stock_6kg', 'stock_12kg', 'updated_at'])
+        update_fields = ['stock_6kg', 'stock_12kg', 'updated_at']
+        if depot.stock_disponible == 0:
+            depot.marques_disponibles = []
+            update_fields.append('marques_disponibles')
+        depot.save(update_fields=update_fields)
         invalider_cache_depot(depot.id)
 
         return Response({
@@ -276,6 +316,72 @@ class GerantStockUpdateView(APIView):
             "stock_12kg": depot.stock_12kg,
             "stock_disponible": depot.stock_disponible
         }, status=status.HTTP_200_OK)
+
+
+class GerantNotifierStockView(APIView):
+    """Notifie les clients ayant déjà commandé à ce dépôt lors d'un réassort."""
+
+    permission_classes = [IsAuthenticated, IsGerant]
+
+    def post(self, request):
+        depot = Depot.objects.filter(gerant=request.user).first()
+        if not depot:
+            return Response(
+                {"detail": "Aucun dépôt associé à votre compte gérant."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if depot.stock_disponible <= 0:
+            return Response(
+                {"detail": "Ajoutez du stock avant de prévenir vos clients."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not depot.marques_disponibles:
+            return Response(
+                {"detail": "Indiquez les marques actuellement en stock avant de prévenir vos clients."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from auth_user.models import User
+        from notifications.services.fcm_service import FCMService
+
+        clients = User.objects.filter(
+            role=UserRole.CLIENT,
+            commandes_client__depot=depot,
+        ).exclude(
+            commandes_client__statut='ANNULEE',
+        ).distinct()
+
+        clients_cibles = clients.count()
+        notifications_envoyees = 0
+        for client in clients.iterator():
+            message_ids = FCMService.envoyer_notification(
+                user=client,
+                titre=f"Le stock est de retour chez {depot.nom}",
+                corps=(
+                    f"{depot.quartier} : des bouteilles sont de nouveau disponibles. "
+                    "Consultez le dépôt dans GAZEO."
+                ),
+                data={
+                    "type": "RETOUR_STOCK",
+                    "action": "voir_depot",
+                    "depot_id": depot.id,
+                    "route": f"/depot/{depot.id}",
+                },
+                channel_id="alertes_stock",
+            )
+            notifications_envoyees += sum(
+                not message_id.startswith('sim-')
+                for message_id in message_ids
+            )
+
+        return Response(
+            {
+                "message": "Notification de retour en stock traitée.",
+                "clients_cibles": clients_cibles,
+                "notifications_envoyees": notifications_envoyees,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 

@@ -1,4 +1,8 @@
 import re
+from pathlib import Path
+
+from django.core.files.uploadedfile import UploadedFile
+from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 from .models import User, UserRole, GerantKYC, StatutKYC
 
@@ -62,18 +66,78 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class GerantKYCSoumissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = GerantKYC
-        fields = ('cni_recto', 'cni_verso', 'photo_depot')
+        fields = (
+            'cni_recto',
+            'cni_verso',
+            'photo_depot',
+            'photo_depot_interieur',
+            'document_commercial',
+        )
 
     def validate(self, attrs):
-        # En mode test ou dev, accepter si les champs sont fournis sous forme de fichiers ou valeurs
+        missing = [
+            field
+            for field in self.Meta.fields
+            if not attrs.get(field) and not getattr(self.instance, field, None)
+        ]
+        if missing:
+            labels = {
+                'cni_recto': 'CNI recto',
+                'cni_verso': 'CNI verso',
+                'photo_depot': 'photo de façade du dépôt',
+                'photo_depot_interieur': 'photo intérieure du dépôt',
+                'document_commercial': 'registre de commerce ou attestation d’activité',
+            }
+            raise serializers.ValidationError({
+                field: f"Le document « {labels[field]} » est obligatoire."
+                for field in missing
+            })
+
+        allowed_extensions = {
+            'cni_recto': {'jpg', 'jpeg', 'png'},
+            'cni_verso': {'jpg', 'jpeg', 'png'},
+            'photo_depot': {'jpg', 'jpeg', 'png'},
+            'photo_depot_interieur': {'jpg', 'jpeg', 'png'},
+            'document_commercial': {'pdf', 'jpg', 'jpeg', 'png'},
+        }
+        errors = {}
+        for field, extensions in allowed_extensions.items():
+            uploaded_file = attrs.get(field)
+            if not isinstance(uploaded_file, UploadedFile):
+                errors[field] = "Veuillez joindre le fichier original, pas un lien."
+                continue
+            extension = Path(uploaded_file.name).suffix.lower().lstrip('.')
+            if extension not in extensions:
+                errors[field] = (
+                    f"Format non accepté. Extensions autorisées : "
+                    f"{', '.join(sorted(extensions))}."
+                )
+                continue
+            if uploaded_file.size > 10 * 1024 * 1024:
+                errors[field] = "La taille maximale autorisée est de 10 Mo."
+                continue
+            uploaded_file.seek(0)
+            if field == 'document_commercial' and extension == 'pdf':
+                if uploaded_file.read(5) != b'%PDF-':
+                    errors[field] = "Le fichier n’est pas un PDF valide."
+            else:
+                try:
+                    with Image.open(uploaded_file) as image:
+                        image.verify()
+                except (
+                    Image.DecompressionBombError,
+                    UnidentifiedImageError,
+                    OSError,
+                ):
+                    errors[field] = "Le fichier image est invalide ou illisible."
+            uploaded_file.seek(0)
+        if errors:
+            raise serializers.ValidationError(errors)
         return attrs
 
 
 class GerantKYCStatutSerializer(serializers.ModelSerializer):
     gerant_telephone = serializers.CharField(source='gerant.telephone', read_only=True)
-    cni_recto_url = serializers.SerializerMethodField()
-    cni_verso_url = serializers.SerializerMethodField()
-    photo_depot_url = serializers.SerializerMethodField()
 
     class Meta:
         model = GerantKYC
@@ -84,16 +148,4 @@ class GerantKYCStatutSerializer(serializers.ModelSerializer):
             'raison_rejet',
             'date_soumission',
             'date_decision',
-            'cni_recto_url',
-            'cni_verso_url',
-            'photo_depot_url',
         )
-
-    def get_cni_recto_url(self, obj) -> str | None:
-        return str(obj.cni_recto) if obj.cni_recto else None
-
-    def get_cni_verso_url(self, obj) -> str | None:
-        return str(obj.cni_verso) if obj.cni_verso else None
-
-    def get_photo_depot_url(self, obj) -> str | None:
-        return str(obj.photo_depot) if obj.photo_depot else None

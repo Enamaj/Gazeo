@@ -208,8 +208,7 @@ class TwilioSMSService:
     def send_otp(self, telephone: str, code: str) -> bool:
         """
         Envoie le SMS OTP au format 'Votre code GAZEO : {code}'.
-        En dev (TWILIO_ENABLED=False) : log le code sans envoi réel.
-        En prod (TWILIO_ENABLED=True) : envoi via l'API Twilio.
+        Retourne False si Twilio est désactivé ou si la livraison échoue.
         """
         norm_phone = self.validate_cameroon_number(telephone)
         message_body = f"Votre code GAZEO : {code}"
@@ -218,8 +217,12 @@ class TwilioSMSService:
         masked_phone = f"{norm_phone[:6]}****{norm_phone[-2:]}"
 
         if not self.twilio_enabled or not self.account_sid or not self.auth_token:
-            logger.info(f"[TwilioSMSService - SIMULATION] OTP pour {masked_phone} : '{message_body}'")
-            return True
+            logger.warning(
+                "[TwilioSMSService] OTP non envoyé : Twilio est désactivé ou mal configuré "
+                "pour %s.",
+                masked_phone,
+            )
+            return False
 
         if not Client:
             logger.error("[TwilioSMSService] Package twilio non importable.")

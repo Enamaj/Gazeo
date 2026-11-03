@@ -23,6 +23,7 @@ class DepotProcheSerializer(serializers.ModelSerializer):
     latitude = serializers.FloatField(read_only=True)
     longitude = serializers.FloatField(read_only=True)
     stock_disponible = serializers.IntegerField(read_only=True)
+    image_depot_url = serializers.SerializerMethodField()
     distance_metres = serializers.SerializerMethodField()
     distance_km = serializers.SerializerMethodField()
     note_moyenne = serializers.SerializerMethodField()
@@ -36,6 +37,8 @@ class DepotProcheSerializer(serializers.ModelSerializer):
             'quartier',
             'telephone',
             'marque',
+            'marques_disponibles',
+            'image_depot_url',
             'stock_6kg',
             'stock_12kg',
             'stock_disponible',
@@ -49,6 +52,9 @@ class DepotProcheSerializer(serializers.ModelSerializer):
             'statut_kyc',
             'est_actif',
         )
+
+    def get_image_depot_url(self, obj) -> str | None:
+        return obj.image_depot.url if obj.image_depot else None
 
     def get_distance_metres(self, obj) -> float | None:
         if hasattr(obj, 'distance') and obj.distance is not None:
@@ -74,6 +80,7 @@ class DepotDetailSerializer(serializers.ModelSerializer):
     note_moyenne = serializers.SerializerMethodField()
     total_avis = serializers.SerializerMethodField()
     derniers_avis = serializers.SerializerMethodField()
+    image_depot_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Depot
@@ -84,6 +91,8 @@ class DepotDetailSerializer(serializers.ModelSerializer):
             'quartier',
             'telephone',
             'marque',
+            'marques_disponibles',
+            'image_depot_url',
             'stock_6kg',
             'stock_12kg',
             'stock_disponible',
@@ -98,6 +107,9 @@ class DepotDetailSerializer(serializers.ModelSerializer):
             'est_actif',
             'created_at',
         )
+
+    def get_image_depot_url(self, obj) -> str | None:
+        return obj.image_depot.url if obj.image_depot else None
 
     def get_note_moyenne(self, obj) -> float:
         avis = obj.avis.all()
@@ -148,3 +160,93 @@ class DepotStockUpdateSerializer(serializers.Serializer):
     stock_6kg = serializers.IntegerField(min_value=0)
     stock_12kg = serializers.IntegerField(min_value=0)
 
+
+class DepotProfileSerializer(serializers.ModelSerializer):
+    latitude = serializers.FloatField(write_only=True)
+    longitude = serializers.FloatField(write_only=True)
+    marques_disponibles = serializers.ListField(
+        child=serializers.ChoiceField(choices=MarqueGaz.choices),
+        allow_empty=True,
+    )
+    image_depot = serializers.ImageField(required=False)
+
+    class Meta:
+        model = Depot
+        fields = (
+            'nom',
+            'adresse',
+            'quartier',
+            'marques_disponibles',
+            'image_depot',
+            'prix_6kg',
+            'prix_12kg',
+            'latitude',
+            'longitude',
+        )
+        extra_kwargs = {
+            'nom': {'required': True},
+            'adresse': {'required': True},
+            'quartier': {'required': True},
+            'prix_6kg': {'required': False},
+            'prix_12kg': {'required': False},
+        }
+
+    def validate(self, attrs):
+        latitude = attrs.get('latitude')
+        longitude = attrs.get('longitude')
+        if self.instance:
+            latitude = latitude if latitude is not None else self.instance.latitude
+            longitude = longitude if longitude is not None else self.instance.longitude
+        if latitude is None or longitude is None:
+            raise serializers.ValidationError(
+                "La géolocalisation du dépôt est obligatoire."
+            )
+        if not (
+            1.6 <= latitude <= 13.1
+            and 8.4 <= longitude <= 16.2
+        ):
+            raise serializers.ValidationError(
+                "La position du dépôt doit se trouver au Cameroun."
+            )
+        if self.instance is None and not attrs.get('image_depot'):
+            raise serializers.ValidationError(
+                {"image_depot": "Ajoutez une photo du dépôt."}
+            )
+        if self.instance is None and not attrs.get('marques_disponibles'):
+            raise serializers.ValidationError(
+                {"marques_disponibles": "Sélectionnez au moins une marque en stock."}
+            )
+        image = attrs.get('image_depot')
+        if image and image.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError(
+                {"image_depot": "La taille maximale de l’image est de 10 Mo."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        latitude = validated_data.pop('latitude')
+        longitude = validated_data.pop('longitude')
+        validated_data['marque'] = validated_data['marques_disponibles'][0]
+        depot = Depot.objects.create(
+            **validated_data,
+            gerant=self.context['request'].user,
+            telephone=self.context['request'].user.telephone,
+            localisation=Point(longitude, latitude, srid=4326),
+            statut_kyc=StatutKYC.VALIDE,
+            est_actif=True,
+        )
+        return depot
+
+    def update(self, instance, validated_data):
+        latitude = validated_data.pop('latitude', instance.latitude)
+        longitude = validated_data.pop('longitude', instance.longitude)
+        instance.localisation = Point(longitude, latitude, srid=4326)
+        marques = validated_data.get('marques_disponibles')
+        if marques is not None:
+            if marques:
+                instance.marque = marques[0]
+            instance.marques_disponibles = marques
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

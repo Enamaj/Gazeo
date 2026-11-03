@@ -1,6 +1,13 @@
 from datetime import timedelta
+from io import BytesIO
+from unittest.mock import patch
+
+from cloudinary import CloudinaryResource
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -18,6 +25,15 @@ class AuthAPITests(APITestCase):
         self.refresh_url = reverse('auth_token_refresh')
         self.profil_url = reverse('auth_profil')
 
+    def _image_upload(self, name):
+        buffer = BytesIO()
+        Image.new('RGB', (2, 2), color='white').save(buffer, format='PNG')
+        return SimpleUploadedFile(
+            name,
+            buffer.getvalue(),
+            content_type='image/png',
+        )
+
     def test_inscription_valid_phone_creates_user_with_otp(self):
         """L'inscription avec un numéro camerounais valide crée l'utilisateur et génère l'OTP."""
         data = {
@@ -25,9 +41,11 @@ class AuthAPITests(APITestCase):
             "password": self.password,
             "role": UserRole.CLIENT,
         }
-        response = self.client.post(self.inscription_url, data, format='json')
+        with patch('auth_user.views.sms_service.send_otp', return_value=True):
+            response = self.client.post(self.inscription_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["message"], "OTP envoyé")
+        self.assertTrue(response.data["sms_sent"])
         self.assertEqual(response.data["telephone"], "+237677112233")
 
         user = User.objects.get(telephone="+237677112233")
@@ -35,6 +53,44 @@ class AuthAPITests(APITestCase):
         self.assertFalse(user.is_active)
         self.assertIsNotNone(user.otp_code)
         self.assertEqual(len(user.otp_code), 6)
+
+    @override_settings(DEBUG=False)
+    @patch('auth_user.views.sms_service.send_otp', return_value=False)
+    def test_inscription_sms_failure_is_reported_outside_debug(self, _send_otp):
+        response = self.client.post(
+            self.inscription_url,
+            {
+                "telephone": "+237677112234",
+                "password": self.password,
+                "role": UserRole.CLIENT,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("n'a pas pu être envoyé", response.data["detail"])
+        self.assertNotIn("otp_code_debug", response.data)
+
+    @override_settings(DEBUG=True)
+    @patch('auth_user.views.sms_service.send_otp', return_value=False)
+    def test_inscription_debug_exposes_code_only_when_sms_is_not_sent(self, _send_otp):
+        response = self.client.post(
+            self.inscription_url,
+            {
+                "telephone": "+237677112235",
+                "password": self.password,
+                "role": UserRole.CLIENT,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["sms_sent"])
+        self.assertIn("Mode développement", response.data["message"])
+        self.assertEqual(
+            response.data["otp_code_debug"],
+            User.objects.get(telephone="+237677112235").otp_code,
+        )
 
     def test_inscription_invalid_phone_rejected(self):
         """L'inscription rejette un format de téléphone non conforme."""
@@ -286,11 +342,42 @@ class AuthAPITests(APITestCase):
         # POST soumission KYC
         soumettre_url = reverse('gerants:gerant_kyc_soumettre')
         data = {
-            "cni_recto": "https://res.cloudinary.com/test/image/upload/v1/cni_recto.jpg",
-            "cni_verso": "https://res.cloudinary.com/test/image/upload/v1/cni_verso.jpg",
-            "photo_depot": "https://res.cloudinary.com/test/image/upload/v1/depot.jpg",
+            "cni_recto": self._image_upload('cni_recto.png'),
+            "cni_verso": self._image_upload('cni_verso.png'),
+            "photo_depot": self._image_upload('depot_facade.png'),
+            "photo_depot_interieur": self._image_upload('depot_interieur.png'),
+            "document_commercial": SimpleUploadedFile(
+                'registre.pdf',
+                b'%PDF-1.4\nTest document',
+                content_type='application/pdf',
+            ),
         }
-        res_soumission = self.client.post(soumettre_url, data, format='json')
+
+        def fake_cloudinary_upload(_file, **options):
+            return CloudinaryResource(
+                public_id=f"test/kyc_{options['resource_type']}",
+                format='pdf' if options['resource_type'] == 'raw' else 'png',
+                version='1',
+                type=options['type'],
+                resource_type=options['resource_type'],
+            )
+
+        with patch(
+            'cloudinary.models.uploader.upload_resource',
+            side_effect=fake_cloudinary_upload,
+        ) as cloudinary_upload:
+            res_soumission = self.client.post(
+                soumettre_url,
+                data,
+                format='multipart',
+            )
+        self.assertEqual(cloudinary_upload.call_count, 5)
+        self.assertTrue(
+            all(
+                call.kwargs['type'] == 'authenticated'
+                for call in cloudinary_upload.call_args_list
+            )
+        )
         self.assertEqual(res_soumission.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res_soumission.data['statut'], 'EN_ATTENTE')
 
@@ -298,6 +385,88 @@ class AuthAPITests(APITestCase):
         res_statut_apres = self.client.get(statut_url)
         self.assertEqual(res_statut_apres.status_code, status.HTTP_200_OK)
         self.assertEqual(res_statut_apres.data['statut'], 'EN_ATTENTE')
+        self.assertNotIn('cni_recto', res_statut_apres.data)
+        self.assertNotIn('document_commercial', res_statut_apres.data)
+
+        # A pending application cannot be silently replaced.
+        res_soumission_dupliquee = self.client.post(soumettre_url, {}, format='multipart')
+        self.assertEqual(
+            res_soumission_dupliquee.status_code,
+            status.HTTP_409_CONFLICT,
+        )
+
+    def test_gerant_kyc_requires_all_documents(self):
+        gerant = User.objects.create_user(
+            username="+237688990012",
+            telephone="+237688990012",
+            password="SecurePass123!",
+            role=UserRole.GERANT,
+            is_verified=True,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=gerant)
+        response = self.client.post(
+            reverse('gerants:gerant_kyc_soumettre'),
+            {"cni_recto": "https://res.cloudinary.com/test/image/upload/cni.jpg"},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cni_verso', response.data)
+        self.assertIn('photo_depot', response.data)
+        self.assertIn('photo_depot_interieur', response.data)
+        self.assertIn('document_commercial', response.data)
+
+    def test_gerant_kyc_rejects_document_urls(self):
+        gerant = User.objects.create_user(
+            username="+237688990014",
+            telephone="+237688990014",
+            password="SecurePass123!",
+            role=UserRole.GERANT,
+            is_verified=True,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=gerant)
+        response = self.client.post(
+            reverse('gerants:gerant_kyc_soumettre'),
+            {
+                field: "https://res.cloudinary.com/test/image/upload/document.jpg"
+                for field in (
+                    'cni_recto',
+                    'cni_verso',
+                    'photo_depot',
+                    'photo_depot_interieur',
+                    'document_commercial',
+                )
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        for field in (
+            'cni_recto',
+            'cni_verso',
+            'photo_depot',
+            'photo_depot_interieur',
+            'document_commercial',
+        ):
+            self.assertIn(field, response.data)
+
+    def test_gerant_kyc_requires_verified_phone(self):
+        gerant = User.objects.create_user(
+            username="+237688990013",
+            telephone="+237688990013",
+            password="SecurePass123!",
+            role=UserRole.GERANT,
+            is_verified=False,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=gerant)
+        response = self.client.post(
+            reverse('gerants:gerant_kyc_soumettre'),
+            {},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("vérifié", response.data['detail'])
 
     def test_connexion_anti_bruteforce_lockout(self):
         """Protection anti-bruteforce : verrouillage après 5 échecs consécutifs."""
@@ -358,4 +527,3 @@ class AuthAPITests(APITestCase):
         refresh_url = reverse('auth_token_refresh')
         res_refresh = self.client.post(refresh_url, {"refresh": refresh_token}, format='json')
         self.assertEqual(res_refresh.status_code, status.HTTP_401_UNAUTHORIZED)
-

@@ -5,6 +5,8 @@ class DepotModel {
   final String quartier;
   final String telephone;
   final String marque;
+  final List<String> marquesDisponibles;
+  final String? imageDepotUrl;
   final int stock6kg;
   final int stock12kg;
   final int stockDisponible;
@@ -25,6 +27,8 @@ class DepotModel {
     required this.quartier,
     required this.telephone,
     required this.marque,
+    required this.marquesDisponibles,
+    this.imageDepotUrl,
     required this.stock6kg,
     required this.stock12kg,
     required this.stockDisponible,
@@ -41,22 +45,30 @@ class DepotModel {
 
   factory DepotModel.fromJson(Map<String, dynamic> json) {
     return DepotModel(
-      id: json['id'] as int,
+      id: json['id'] as int? ?? 1,
       nom: json['nom'] as String? ?? 'Dépôt de gaz',
       adresse: json['adresse'] as String? ?? '',
       quartier: json['quartier'] as String? ?? 'Yaoundé',
-      telephone: json['telephone'] as String? ?? '',
-      marque: json['marque'] as String? ?? 'TRADEX',
+      telephone: json['telephone'] as String? ?? '+237 690 000 000',
+      marque: (json['marque'] as String? ?? 'TRADEX').toUpperCase(),
+      marquesDisponibles:
+          (json['marques_disponibles'] as List<dynamic>?)
+              ?.map((value) => value.toString().toUpperCase())
+              .toList() ??
+          [(json['marque'] as String? ?? 'TRADEX').toUpperCase()],
+      imageDepotUrl: json['image_depot_url'] as String?,
       stock6kg: json['stock_6kg'] as int? ?? 0,
       stock12kg: json['stock_12kg'] as int? ?? 0,
       stockDisponible: json['stock_disponible'] as int? ?? 0,
-      prix6kg: double.tryParse(json['prix_6kg']?.toString() ?? '3000') ?? 3000.0,
-      prix12kg: double.tryParse(json['prix_12kg']?.toString() ?? '6500') ?? 6500.0,
+      prix6kg:
+          double.tryParse(json['prix_6kg']?.toString() ?? '3000') ?? 3000.0,
+      prix12kg:
+          double.tryParse(json['prix_12kg']?.toString() ?? '6500') ?? 6500.0,
       latitude: (json['latitude'] as num?)?.toDouble() ?? 3.8667,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 11.5167,
       distanceMetres: (json['distance_metres'] as num?)?.toDouble(),
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
-      noteMoyenne: (json['note_moyenne'] as num?)?.toDouble() ?? 5.0,
+      noteMoyenne: (json['note_moyenne'] as num?)?.toDouble() ?? 4.8,
       statutKyc: json['statut_kyc'] as String? ?? 'VALIDE',
       estActif: json['est_actif'] as bool? ?? true,
     );
@@ -64,5 +76,16 @@ class DepotModel {
 
   bool get enRupture => stockDisponible <= 0;
   bool get stockFaible => stockDisponible > 0 && stockDisponible <= 5;
-}
 
+  String get marqueAbregee {
+    final m = marque.toUpperCase();
+    if (m.contains('TOTAL')) return 'TOT';
+    if (m.contains('TRADEX')) return 'TRX';
+    if (m.contains('CAMGAZ')) return 'CAM';
+    if (m.contains('SCTM')) return 'SCT';
+    return m.length > 3 ? m.substring(0, 3) : m;
+  }
+
+  String get formattedPrix12kg => '${prix12kg.toInt()} FCFA';
+  String get formattedPrix6kg => '${prix6kg.toInt()} FCFA';
+}

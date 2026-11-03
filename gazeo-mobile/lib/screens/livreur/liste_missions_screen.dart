@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-import '../../models/mission_livreur.dart';
-import '../../services/api_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/gazeo_bottom_nav.dart';
 
 class ListeMissionsScreen extends StatefulWidget {
   const ListeMissionsScreen({super.key});
@@ -12,281 +11,381 @@ class ListeMissionsScreen extends StatefulWidget {
 }
 
 class _ListeMissionsScreenState extends State<ListeMissionsScreen> {
-  final ApiService _apiService = ApiService();
-  final NumberFormat _currencyFormat = NumberFormat('#,##0', 'fr_FR');
+  int _selectedTab = 0; // 0: À venir, 1: En cours, 2: Terminées
 
-  bool _isLoading = true;
-  List<MissionLivreur> _missions = [];
-  String? _errorMessage;
-  int? _acceptingId;
+  final List<Map<String, dynamic>> _demoMissionsAVenir = [
+    {
+      'id': 1048,
+      'code': '#GAZ-2026-1048',
+      'client': 'M. Nguimatsia',
+      'bouteille': '12.5 kg - 13 000 FCFA',
+      'quartier': 'Mvog-Ada',
+      'distance': '2.4 km',
+      'statut': 'À venir',
+    },
+    {
+      'id': 1047,
+      'code': '#GAZ-2026-1047',
+      'client': 'Mme Tchouake',
+      'bouteille': '22 kg - 22 000 FCFA',
+      'quartier': 'Bastos',
+      'distance': '3.1 km',
+      'statut': 'À venir',
+    },
+    {
+      'id': 1046,
+      'code': '#GAZ-2026-1046',
+      'client': 'M. Djoumessi',
+      'bouteille': '6 kg - 8 500 FCFA',
+      'quartier': 'Nlongkak',
+      'distance': '4.8 km',
+      'statut': 'À venir',
+    },
+  ];
 
-  @override
-  void initState() {
-    super.initState();
-    _chargerMissions();
-  }
-
-  Future<void> _chargerMissions() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final list = await _apiService.getMissionsDisponibles();
-      if (mounted) {
-        setState(() {
-          _missions = list.map((item) => MissionLivreur.fromJson(item)).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Impossible de récupérer les missions disponibles.";
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _accepterMission(MissionLivreur mission) async {
-    setState(() => _acceptingId = mission.id);
-
-    try {
-      await _apiService.accepterMission(mission.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Mission #${mission.id} acceptée ! Rendez-vous au dépôt ${mission.depotNom}."),
-            backgroundColor: Colors.green[700],
-          ),
-        );
-        // Naviguer vers l'écran de mission active
-        context.pushReplacement('/livreur/mission-active/${mission.id}');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _acceptingId = null);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Erreur lors de l'acceptation. La course a peut-être déjà été prise."),
-            backgroundColor: Colors.red,
-          ),
-        );
-        _chargerMissions();
-      }
-    }
-  }
+  final List<Map<String, dynamic>> _demoMissionsEnCours = [
+    {
+      'id': 1045,
+      'code': '#GAZ-2026-1045',
+      'client': 'M. Roger Milla',
+      'bouteille': '12.5 kg - 13 000 FCFA',
+      'quartier': 'Omnisports',
+      'distance': '1.1 km',
+      'statut': 'En cours',
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Missions disponibles'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _chargerMissions,
+    final currentList = _selectedTab == 0
+        ? _demoMissionsAVenir
+        : _selectedTab == 1
+            ? _demoMissionsEnCours
+            : [];
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showExitOrSwitchModal(context);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.swap_horiz_rounded, size: 22, color: AppColors.primary),
+            tooltip: 'Changer de profil',
+            onPressed: () => _showExitOrSwitchModal(context),
+          ),
+          title: const Text(
+            'Mes missions',
+            style: TextStyle(
+              color: AppColors.slate900,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          actions: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.successBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.circle, color: AppColors.success, size: 8),
+                  SizedBox(width: 5),
+                  Text(
+                    'En service',
+                    style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        body: Column(
+        children: [
+          // Contrôle segmenté (À venir (3) | En cours (1) | Terminées)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildTabButton(
+                    index: 0,
+                    label: 'À venir (${_demoMissionsAVenir.length})',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildTabButton(
+                    index: 1,
+                    label: 'En cours (${_demoMissionsEnCours.length})',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildTabButton(
+                    index: 2,
+                    label: 'Terminées',
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1, color: AppColors.slate200),
+
+          // Liste des missions
+          Expanded(
+            child: currentList.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Aucune mission terminée pour le moment.',
+                      style: TextStyle(color: AppColors.slate500),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 90.0),
+                    itemCount: currentList.length,
+                    itemBuilder: (context, index) {
+                      final m = currentList[index];
+                      return _buildMissionCard(m);
+                    },
+                  ),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _chargerMissions,
-              child: _errorMessage != null
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.wifi_off, size: 48, color: Colors.grey[400]),
-                          const SizedBox(height: 12),
-                          Text(_errorMessage!, style: const TextStyle(color: Colors.grey)),
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _chargerMissions,
-                            child: const Text('Réessayer'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : _missions.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check_circle_outline, size: 56, color: Colors.green[400]),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Aucune mission en attente',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Toutes les commandes à proximité sont pourvues.\nRestez en ligne, de nouvelles commandes arrivent !',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _missions.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 14),
-                          itemBuilder: (context, index) {
+      bottomNavigationBar: const GazeoBottomNav(currentIndex: 0, role: GazeoNavRole.livreur),
+    ),
+  );
+}
 
-                            final mission = _missions[index];
-                            final isAccepting = _acceptingId == mission.id;
+  void _showExitOrSwitchModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.slate300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Row(
+                children: [
+                  Icon(Icons.two_wheeler, color: AppColors.primary, size: 26),
+                  SizedBox(width: 10),
+                  Text(
+                    'Espace Livreur GAZEO',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Vous êtes actuellement connecté en tant que Livreur. Que souhaitez-vous faire ?',
+                style: TextStyle(color: AppColors.slate600, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.blue50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.swap_horiz, color: AppColors.primary),
+                ),
+                title: const Text('Changer de rôle / compte', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Passer en mode client ou gérant'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/choix-compte');
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.logout, color: AppColors.error),
+                ),
+                title: const Text('Se déconnecter', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+                subtitle: const Text('Quitter la session livreur'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.go('/connexion');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-                            return Card(
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Entête de la course
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-
-                                          child: Text(
-                                            'Course #${mission.id}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF1E3A8A),
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          '+${_currencyFormat.format(mission.fraisLivraison)} FCFA',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 14),
-
-                                    // Étape 1 : Collecte au dépôt
-                                    Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Icon(Icons.storefront, color: Colors.blue, size: 20),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Collecte : ${mission.depotNom}',
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                              ),
-                                              Text(
-                                                mission.depotAdresse.isNotEmpty ? mission.depotAdresse : mission.depotQuartier,
-                                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 9),
-                                      child: SizedBox(
-                                        height: 16,
-                                        child: VerticalDivider(thickness: 2, color: Colors.grey),
-                                      ),
-                                    ),
-
-                                    // Étape 2 : Livraison au client
-                                    Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Icon(Icons.location_on, color: Colors.red, size: 20),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Livraison client',
-                                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                              ),
-                                              Text(
-                                                mission.adresseLivraison,
-                                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Divider(height: 24),
-
-                                    // Détail bouteilles et bouton
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Wrap(
-                                            spacing: 6,
-                                            children: [
-                                              if (mission.quantite6kg > 0)
-                                                Chip(
-                                                  label: Text('${mission.quantite6kg} x 6kg', style: const TextStyle(fontSize: 11)),
-                                                  backgroundColor: Colors.grey[100],
-                                                  padding: EdgeInsets.zero,
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                ),
-                                              if (mission.quantite12kg > 0)
-                                                Chip(
-                                                  label: Text('${mission.quantite12kg} x 12.5kg', style: const TextStyle(fontSize: 11)),
-                                                  backgroundColor: Colors.grey[100],
-                                                  padding: EdgeInsets.zero,
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF1E3A8A),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          ),
-                                          icon: isAccepting
-                                              ? const SizedBox(
-                                                  width: 14,
-                                                  height: 14,
-                                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                                )
-                                              : const Icon(Icons.check, size: 18),
-                                          label: const Text('Accepter la mission'),
-                                          onPressed: isAccepting ? null : () => _accepterMission(mission),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+  Widget _buildTabButton({required int index, required String label}) {
+    final isSelected = _selectedTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.blue50 : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.slate200,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? AppColors.primary : AppColors.slate600,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMissionCard(Map<String, dynamic> mission) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.slate200, width: 0.8),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Code commande & Badge statut vert
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                mission['code'] as String,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: AppColors.slate900,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.successBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  mission['statut'] as String,
+                  style: const TextStyle(
+                    color: AppColors.success,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // Client et Bouteille
+          Text(
+            'Client : ${mission['client']}',
+            style: const TextStyle(color: AppColors.slate700, fontSize: 13),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            mission['bouteille'] as String,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          // Localisation et distance
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined, color: AppColors.slate400, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '${mission['quartier']} (${mission['distance']})',
+                style: const TextStyle(color: AppColors.slate500, fontSize: 12),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Bouton bleu "Voir l'itinéraire"
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                context.push('/suivi/${mission['id']}');
+              },
+              icon: const Icon(Icons.navigation_outlined, size: 16),
+              label: const Text(
+                "Voir l'itinéraire",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(23),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

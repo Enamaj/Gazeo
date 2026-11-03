@@ -2,12 +2,14 @@ from django.conf import settings
 from django.contrib.gis.db import models as gis_models
 from django.contrib.gis.geos import Point
 from django.db import models
+from cloudinary.models import CloudinaryField
 
 
 class MarqueGaz(models.TextChoices):
     TRADEX = 'TRADEX', 'Tradex'
     TOTAL = 'TOTAL', 'TotalEnergies'
     CAMGAZ = 'CAMGAZ', 'Camgaz'
+    SCTM = 'SCTM', 'SCTM'
     AUTRE = 'AUTRE', 'Autre marque'
 
 
@@ -22,6 +24,12 @@ class Depot(models.Model):
     adresse = models.CharField(max_length=255, help_text="Adresse descriptive")
     quartier = models.CharField(max_length=100, help_text="Quartier à Yaoundé (ex: Bastos, Melen, Biyem-Assi)")
     telephone = models.CharField(max_length=20, help_text="Téléphone de contact du dépôt")
+    image_depot = CloudinaryField(
+        'image_depot',
+        folder='gazeo/depots',
+        blank=True,
+        null=True,
+    )
 
     # Coordonnées géospatiales PostGIS (Point SRID 4326 avec index spatial GiST)
     localisation = gis_models.PointField(
@@ -45,6 +53,11 @@ class Depot(models.Model):
         choices=MarqueGaz.choices,
         default=MarqueGaz.TRADEX,
         help_text="Marque principale distribuée"
+    )
+    marques_disponibles = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Marques de bouteilles actuellement disponibles dans ce dépôt",
     )
 
     stock_6kg = models.PositiveIntegerField(default=0, help_text="Quantité en stock de bouteilles 6kg")

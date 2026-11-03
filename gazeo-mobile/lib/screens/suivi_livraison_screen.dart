@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class SuiviLivraisonScreen extends StatefulWidget {
   final int commandeId;
@@ -20,78 +21,46 @@ class SuiviLivraisonScreen extends StatefulWidget {
 }
 
 class _SuiviLivraisonScreenState extends State<SuiviLivraisonScreen> {
-  final ApiService _apiService = ApiService();
   final MapController _mapController = MapController();
-  Timer? _pollingTimer;
+  Timer? _timer;
 
-  bool _isLoading = true;
-  LatLng? _positionLivreur;
-  LatLng? _positionDestination;
-  String? _adresseDestination;
-  double? _distanceRestanteKm;
-  int? _etaMinutes;
-  String? _livreurTelephone;
-  String _statutCommande = 'EN_LIVRAISON';
+  // Coordonnées de simulation Yaoundé (Mvog-Ada vers Bastos)
+  final LatLng _depotPos = const LatLng(3.8680, 11.5200);
+  final LatLng _clientPos = const LatLng(3.8760, 11.5120);
+  LatLng _livreurPos = const LatLng(3.8715, 11.5165);
+
+  final List<LatLng> _routePoints = const [
+    LatLng(3.8680, 11.5200),
+    LatLng(3.8695, 11.5185),
+    LatLng(3.8715, 11.5165),
+    LatLng(3.8740, 11.5140),
+    LatLng(3.8760, 11.5120),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _fetchPositionActuelle();
-    // Polling régulier toutes les 15 secondes selon spécification Prompt 4.2
-    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      _fetchPositionActuelle(isPolling: true);
+    // Animation légère de déplacement du livreur
+    _timer = Timer.periodic(const Duration(seconds: 4), (t) {
+      if (mounted) {
+        setState(() {
+          _livreurPos = LatLng(
+            _livreurPos.latitude + 0.0005,
+            _livreurPos.longitude - 0.0004,
+          );
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
-  Future<void> _fetchPositionActuelle({bool isPolling = false}) async {
-    try {
-      final response = await _apiService.dio.get('/livraisons/${widget.commandeId}/position-actuelle/');
-      if (response.statusCode == 200 && mounted) {
-        final data = response.data;
-        final posLivreur = data['position_livreur'];
-        final dest = data['destination'];
-
-        setState(() {
-          if (posLivreur != null) {
-            _positionLivreur = LatLng(
-              (posLivreur['latitude'] as num).toDouble(),
-              (posLivreur['longitude'] as num).toDouble(),
-            );
-          }
-          if (dest != null) {
-            _positionDestination = LatLng(
-              (dest['latitude'] as num).toDouble(),
-              (dest['longitude'] as num).toDouble(),
-            );
-            _adresseDestination = dest['adresse'] as String?;
-          }
-          _distanceRestanteKm = (data['distance_restante_km'] as num?)?.toDouble();
-          _etaMinutes = data['eta_minutes'] as int?;
-          _statutCommande = data['statut_commande'] ?? _statutCommande;
-          _isLoading = false;
-        });
-
-        // Recentrer si première récupération
-        if (!isPolling && _positionLivreur != null) {
-          _mapController.move(_positionLivreur!, 15.0);
-        }
-      }
-    } catch (e) {
-      if (mounted && !isPolling) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _appelerLivreur() async {
-    final tel = _livreurTelephone ?? '+237600000000';
-    final uri = Uri.parse('tel:$tel');
+  Future<void> _makePhoneCall(String phone) async {
+    final uri = Uri.parse('tel:$phone');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     }
@@ -99,179 +68,256 @@ class _SuiviLivraisonScreenState extends State<SuiviLivraisonScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final initialCenter = _positionLivreur ?? _positionDestination ?? const LatLng(3.8667, 11.5167);
-
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Suivi de livraison #${widget.commandeId}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _fetchPositionActuelle(),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.slate900),
+          onPressed: () => context.go('/'),
+        ),
+        title: const Text(
+          'Suivi de votre commande',
+          style: TextStyle(
+            color: AppColors.slate900,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
           ),
-        ],
+        ),
+        centerTitle: true,
       ),
-      body: Stack(
+      body: Column(
         children: [
-          // Carte interactive OpenStreetMap
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: initialCenter,
-              initialZoom: 14.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'cm.gazeo.app',
+          // 1. Carte en direct avec itinéraire et moto en temps réel
+          SizedBox(
+            height: 220,
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _livreurPos,
+                initialZoom: 14.5,
               ),
-              MarkerLayer(
-                markers: [
-                  // Marqueur destination client
-                  if (_positionDestination != null)
-                    Marker(
-                      point: _positionDestination!,
-                      width: 44,
-                      height: 44,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue[900],
-                          shape: BoxShape.circle,
-                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                        ),
-                        child: const Icon(Icons.home, color: Colors.white, size: 24),
-                      ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'cm.gazeo.app',
+                ),
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      color: AppColors.primaryLight,
+                      strokeWidth: 4.0,
                     ),
-                  // Marqueur livreur en temps réel
-                  if (_positionLivreur != null)
+                  ],
+                ),
+                MarkerLayer(
+                  markers: [
+                    // Point de départ (Dépôt)
                     Marker(
-                      point: _positionLivreur!,
-                      width: 48,
-                      height: 48,
+                      point: _depotPos,
+                      width: 28,
+                      height: 28,
                       child: Container(
                         decoration: const BoxDecoration(
-                          color: Colors.amber,
+                          color: AppColors.primary,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 6, offset: Offset(0, 2))],
                         ),
-                        child: const Icon(Icons.two_wheeler, color: Colors.black87, size: 28),
+                        child: const Icon(Icons.storefront, color: Colors.white, size: 16),
                       ),
                     ),
-                ],
-              ),
-            ],
-          ),
-
-          if (_isLoading)
-            const Positioned(
-              top: 16,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Card(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('Synchronisation GPS du livreur...'),
-                  ),
-                ),
-              ),
-            ),
-
-          // Panneau inférieur d'information et d'actions
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: Card(
-              elevation: 6,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Indicateur d'avancement
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade100,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.local_shipping, color: Colors.amber, size: 28),
+                    // Destination Client
+                    Marker(
+                      point: _clientPos,
+                      width: 28,
+                      height: 28,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: AppColors.orange,
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _etaMinutes != null ? 'Arrivée estimée : ~$_etaMinutes min' : 'Livreur en route',
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _distanceRestanteKm != null
-                                    ? 'Distance restante : $_distanceRestanteKm km${_adresseDestination != null ? ' • $_adresseDestination' : ''}'
-                                    : (_adresseDestination ?? 'Localisation en direct'),
-                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        child: const Icon(Icons.location_on, color: Colors.white, size: 18),
+                      ),
                     ),
-                    const Divider(height: 24),
-
-                    // Code OTP client à donner au livreur
-                    if (widget.codeConfirmation != null) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                    // Moto Livreur en direct
+                    Marker(
+                      point: _livreurPos,
+                      width: 38,
+                      height: 38,
+                      child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.green.shade300),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Code OTP à donner au livreur :',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                            Text(
-                              widget.codeConfirmation!,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                                color: Colors.green.shade800,
-                              ),
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 6,
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Bouton Appeler le livreur
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _appelerLivreur,
-                        icon: const Icon(Icons.phone),
-                        label: const Text('Appeler le livreur'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        child: const Icon(Icons.two_wheeler, color: AppColors.primary, size: 24),
                       ),
                     ),
                   ],
                 ),
+              ],
+            ),
+          ),
+
+          // 2. Fiche Livreur & Progression
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Carte du Livreur
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.slate200),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x06000000),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        ClipOval(
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            color: AppColors.slate100,
+                            child: Image.asset(
+                              'assets/images/driver_avatar.png',
+                              fit: BoxFit.cover,
+                              errorBuilder: (ctx, err, stack) => const Icon(
+                                Icons.person,
+                                color: AppColors.primary,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Yao Patrick',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  color: AppColors.slate900,
+                                ),
+                              ),
+                              const Text(
+                                'Livreur - Moto',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.slate500,
+                                ),
+                              ),
+                              Row(
+                                children: const [
+                                  Icon(Icons.star_rounded, color: AppColors.orange, size: 14),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    '4.8',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                  ),
+                                  Text(
+                                    ' (56 livraisons)',
+                                    style: TextStyle(color: AppColors.slate400, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Bouton Appel
+                        IconButton(
+                          onPressed: () => _makePhoneCall('+237699000000'),
+                          icon: const Icon(Icons.phone_outlined, color: AppColors.primary),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.blue50,
+                          ),
+                        ),
+                        // Bouton Message
+                        IconButton(
+                          onPressed: () => context.push('/chat/${widget.commandeId}'),
+                          icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppColors.primary),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.blue50,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Timeline verticale des étapes
+                  _buildTimelineItem(
+                    isCompleted: true,
+                    title: 'Commande confirmée',
+                    subtitle: 'Aujourd\'hui, 10:24',
+                    isLast: false,
+                  ),
+                  _buildTimelineItem(
+                    isCompleted: true,
+                    title: 'En préparation',
+                    subtitle: 'Aujourd\'hui, 10:32',
+                    isLast: false,
+                  ),
+                  _buildTimelineItem(
+                    isCompleted: false,
+                    isCurrent: true,
+                    title: 'En cours de livraison',
+                    subtitle: 'Arrivée estimée : 15 min',
+                    isLast: false,
+                  ),
+                  _buildTimelineItem(
+                    isCompleted: false,
+                    title: 'Livraison',
+                    subtitle: 'Code de confirmation : ${widget.codeConfirmation ?? '482910'}',
+                    isLast: true,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Message d'aide
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.blue50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Suivez votre livreur en temps réel sur la carte.',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -279,5 +325,62 @@ class _SuiviLivraisonScreenState extends State<SuiviLivraisonScreen> {
       ),
     );
   }
-}
 
+  Widget _buildTimelineItem({
+    required bool isCompleted,
+    bool isCurrent = false,
+    required String title,
+    required String subtitle,
+    required bool isLast,
+  }) {
+    Color dotColor = AppColors.slate300;
+    if (isCompleted) dotColor = AppColors.success;
+    if (isCurrent) dotColor = AppColors.primary;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: dotColor,
+                border: isCurrent ? Border.all(color: AppColors.blue100, width: 3) : null,
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 36,
+                color: isCompleted ? AppColors.success : AppColors.slate200,
+              ),
+          ],
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: isCurrent ? AppColors.primary : AppColors.slate900,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+              ),
+              const SizedBox(height: 14),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

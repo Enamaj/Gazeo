@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -6,8 +7,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../models/mission_livreur.dart';
 import '../../services/api_service.dart';
+import '../../services/location_service.dart';
 
 class MissionActiveScreen extends StatefulWidget {
   final int commandeId;
@@ -57,8 +60,10 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
       final data = await _apiService.getLivreurTableauDeBord();
       if (data['mission_active'] != null) {
         _mission = MissionLivreur.fromJson(data['mission_active']);
+      } else {
+        throw StateError('Aucune mission active n’est associée à ce compte.');
       }
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -86,22 +91,29 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
             timeLimit: Duration(seconds: 5),
           ),
         );
+        if (!LocationService.isWithinCameroon(pos.latitude, pos.longitude)) {
+          throw StateError('La position détectée est en dehors du Cameroun.');
+        }
         final latLng = LatLng(pos.latitude, pos.longitude);
-
 
         if (mounted) {
           setState(() => _positionLivreur = latLng);
         }
 
         // Envoi au backend
-        await _apiService.mettreAJourPosition(widget.commandeId, pos.latitude, pos.longitude);
+        await _apiService.mettreAJourPosition(
+          widget.commandeId,
+          pos.latitude,
+          pos.longitude,
+        );
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[MissionActive] Erreur localisation GPS: $e');
@@ -115,7 +127,9 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Bouteilles récupérées ! Rendez-vous à l'adresse du client."),
+            content: Text(
+              "Bouteilles récupérées ! Rendez-vous à l'adresse du client.",
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -144,8 +158,10 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
     if (code.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Veuillez saisir le code OTP à 6 chiffres fourni par le client."),
-          backgroundColor: Colors.orange,
+          content: Text(
+            "Veuillez saisir le code OTP à 6 chiffres fourni par le client.",
+          ),
+          backgroundColor: Color(0xFFF9735B),
         ),
       );
       return;
@@ -172,7 +188,7 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
             actions: [
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3A8A),
+                  backgroundColor: const Color(0xFF155E75),
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () {
@@ -190,7 +206,9 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
         setState(() => _isActionLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Code OTP invalide. Demandez au client de vérifier son application."),
+            content: Text(
+              "Code OTP invalide. Demandez au client de vérifier son application.",
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -245,7 +263,8 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
 
     final isEnLivraison = mission?.statut == 'EN_LIVRAISON';
 
-    final depotLocation = (mission?.depotLatitude != null && mission?.depotLongitude != null)
+    final depotLocation =
+        (mission?.depotLatitude != null && mission?.depotLongitude != null)
         ? LatLng(mission!.depotLatitude!, mission.depotLongitude!)
         : _yaoundeCentre;
 
@@ -289,12 +308,18 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                         height: 44,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.blue[600],
+                            color: const Color(0xFF0E7490),
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 3),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black26, blurRadius: 6),
+                            ],
                           ),
-                          child: const Icon(Icons.two_wheeler, color: Colors.white, size: 24),
+                          child: const Icon(
+                            Icons.two_wheeler,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                       ),
                     // Marqueur Dépôt
@@ -304,12 +329,18 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                       height: 44,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E3A8A),
+                          color: const Color(0xFF155E75),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black26, blurRadius: 6),
+                          ],
                         ),
-                        child: const Icon(Icons.storefront, color: Colors.white, size: 22),
+                        child: const Icon(
+                          Icons.storefront,
+                          color: Colors.white,
+                          size: 22,
+                        ),
                       ),
                     ),
                     // Marqueur Client
@@ -322,9 +353,15 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                           color: Colors.red[600],
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black26, blurRadius: 6),
+                          ],
                         ),
-                        child: const Icon(Icons.person_pin_circle, color: Colors.white, size: 26),
+                        child: const Icon(
+                          Icons.person_pin_circle,
+                          color: Colors.white,
+                          size: 26,
+                        ),
                       ),
                     ),
                   ],
@@ -341,7 +378,13 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -3))],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: Offset(0, -3),
+                  ),
+                ],
               ),
               child: ListView(
                 children: [
@@ -349,17 +392,26 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: isEnLivraison ? Colors.orange[100] : Colors.blue[100],
+                          color: isEnLivraison
+                              ? const Color(0xFFFFE8E3)
+                              : const Color(0xFFE6F4F5),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          isEnLivraison ? 'ÉTAPE 2 : EN ROUTE VERS CLIENT' : 'ÉTAPE 1 : RÉCUPÉRATION AU DÉPÔT',
+                          isEnLivraison
+                              ? 'ÉTAPE 2 : EN ROUTE VERS CLIENT'
+                              : 'ÉTAPE 1 : RÉCUPÉRATION AU DÉPÔT',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: isEnLivraison ? Colors.orange[900] : Colors.blue[900],
+                            color: isEnLivraison
+                                ? const Color(0xFFC2412D)
+                                : const Color(0xFF155E75),
                           ),
                         ),
                       ),
@@ -367,7 +419,11 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                       if (mission != null)
                         Text(
                           '${mission.fraisLivraison.toStringAsFixed(0)} FCFA',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
                         ),
                     ],
                   ),
@@ -378,15 +434,23 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const CircleAvatar(
-                        backgroundColor: Color(0xFF1E3A8A),
+                        backgroundColor: Color(0xFF155E75),
                         child: Icon(Icons.storefront, color: Colors.white),
                       ),
                       title: Text(mission?.depotNom ?? 'Dépôt'),
-                      subtitle: Text(mission?.depotAdresse.isNotEmpty == true ? mission!.depotAdresse : (mission?.depotQuartier ?? '')),
+                      subtitle: Text(
+                        mission?.depotAdresse.isNotEmpty == true
+                            ? mission!.depotAdresse
+                            : (mission?.depotQuartier ?? ''),
+                      ),
                       trailing: (mission?.depotTelephone.isNotEmpty == true)
                           ? IconButton(
-                              icon: const Icon(Icons.phone, color: Colors.green),
-                              onPressed: () => _appelerNumero(mission!.depotTelephone),
+                              icon: const Icon(
+                                Icons.phone,
+                                color: Colors.green,
+                              ),
+                              onPressed: () =>
+                                  _appelerNumero(mission!.depotTelephone),
                             )
                           : null,
                     ),
@@ -396,18 +460,29 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                       height: 48,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A),
+                          backgroundColor: const Color(0xFF155E75),
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         icon: _isActionLoading
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.check_box_outlined),
-                        label: const Text('Stock récupéré au dépôt', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                        label: const Text(
+                          'Stock récupéré au dépôt',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         onPressed: _isActionLoading ? null : _recupererStock,
                       ),
                     ),
@@ -419,12 +494,20 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                         backgroundColor: Colors.red,
                         child: Icon(Icons.person, color: Colors.white),
                       ),
-                      title: Text(mission?.clientNom.isNotEmpty == true ? mission!.clientNom : 'Client GAZEO'),
+                      title: Text(
+                        mission?.clientNom.isNotEmpty == true
+                            ? mission!.clientNom
+                            : 'Client GAZEO',
+                      ),
                       subtitle: Text(mission?.adresseLivraison ?? ''),
                       trailing: (mission?.clientTelephone.isNotEmpty == true)
                           ? IconButton(
-                              icon: const Icon(Icons.phone, color: Colors.green),
-                              onPressed: () => _appelerNumero(mission!.clientTelephone),
+                              icon: const Icon(
+                                Icons.phone,
+                                color: Colors.green,
+                              ),
+                              onPressed: () =>
+                                  _appelerNumero(mission!.clientTelephone),
                             )
                           : null,
                     ),
@@ -434,14 +517,24 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 8),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 8,
+                      ),
                       decoration: InputDecoration(
                         counterText: '',
                         hintText: 'Code OTP 6 chiffres',
-                        hintStyle: const TextStyle(fontSize: 14, letterSpacing: 1, color: Colors.grey),
+                        hintStyle: const TextStyle(
+                          fontSize: 14,
+                          letterSpacing: 1,
+                          color: Colors.grey,
+                        ),
                         filled: true,
                         fillColor: Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                         prefixIcon: const Icon(Icons.lock_outline),
                       ),
                     ),
@@ -453,17 +546,30 @@ class _MissionActiveScreenState extends State<MissionActiveScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[700],
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         icon: _isActionLoading
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.verified),
-                        label: const Text('Confirmer la livraison', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                        onPressed: _isActionLoading ? null : _confirmerLivraison,
+                        label: const Text(
+                          'Confirmer la livraison',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: _isActionLoading
+                            ? null
+                            : _confirmerLivraison,
                       ),
                     ),
                   ],

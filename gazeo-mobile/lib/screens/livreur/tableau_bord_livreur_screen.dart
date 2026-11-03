@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+
 import '../../models/mission_livreur.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -9,7 +10,8 @@ class TableauBordLivreurScreen extends StatefulWidget {
   const TableauBordLivreurScreen({super.key});
 
   @override
-  State<TableauBordLivreurScreen> createState() => _TableauBordLivreurScreenState();
+  State<TableauBordLivreurScreen> createState() =>
+      _TableauBordLivreurScreenState();
 }
 
 class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
@@ -71,15 +73,21 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
   Future<void> _toggleDisponibilite(bool value) async {
     setState(() => _estDisponible = value);
     try {
-      final newState = await _apiService.toggleDisponibilite(estDisponible: value);
+      final newState = await _apiService.toggleDisponibilite(
+        estDisponible: value,
+      );
       if (mounted) {
         setState(() => _estDisponible = newState);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _estDisponible ? "Vous êtes EN SERVICE. Prêt à recevoir des courses !" : "Vous êtes HORS LIGNE.",
+              _estDisponible
+                  ? "Vous êtes EN SERVICE. Prêt à recevoir des courses !"
+                  : "Vous êtes HORS LIGNE.",
             ),
-            backgroundColor: _estDisponible ? Colors.green[700] : Colors.grey[800],
+            backgroundColor: _estDisponible
+                ? Colors.green[700]
+                : Colors.grey[800],
             duration: const Duration(seconds: 2),
           ),
         );
@@ -100,7 +108,7 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF4F7FA),
       appBar: AppBar(
         title: const Text('Espace Livreur'),
         actions: [
@@ -132,13 +140,18 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.red[300]!),
                       ),
-                      child: Text(_errorMessage!, style: TextStyle(color: Colors.red[800])),
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red[800]),
+                      ),
                     ),
 
                   // Carte Profil & Toggle Disponibilité
                   Card(
                     elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -148,8 +161,13 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 26,
-                                backgroundColor: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
-                                child: const Icon(Icons.two_wheeler, color: Color(0xFF1E3A8A), size: 30),
+                                backgroundColor: const Color(0xFF155E75)
+                                    .withValues(alpha: 0.1),
+                                child: const Icon(
+                                  Icons.two_wheeler,
+                                  color: Color(0xFF155E75),
+                                  size: 30,
+                                ),
                               ),
                               const SizedBox(width: 14),
                               Expanded(
@@ -158,19 +176,30 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                                   children: [
                                     const Text(
                                       'Livreur Partenaire',
-                                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                     Text(
                                       _userPhone ?? '+237 ...',
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: _estDisponible ? Colors.green[100] : Colors.grey[200],
+                                  color: _estDisponible
+                                      ? Colors.green[100]
+                                      : Colors.grey[200],
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -178,7 +207,9 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: _estDisponible ? Colors.green[800] : Colors.grey[700],
+                                    color: _estDisponible
+                                        ? Colors.green[800]
+                                        : Colors.grey[700],
                                   ),
                                 ),
                               ),
@@ -214,14 +245,15 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                          colors: [Color(0xFF155E75), Color(0xFF0E7490)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF2563EB).withValues(alpha: 0.3),
+                            color: const Color(0xFF0E7490)
+                                .withValues(alpha: 0.3),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -234,7 +266,10 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.amber[400],
                                   borderRadius: BorderRadius.circular(6),
@@ -262,12 +297,19 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                           const SizedBox(height: 12),
                           Text(
                             'Course #${_missionActive!.id} • ${_missionActive!.depotNom}',
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Destination : ${_missionActive!.adresseLivraison}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
@@ -276,12 +318,19 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.amber[400],
                                 foregroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
                               icon: const Icon(Icons.navigation),
-                              label: const Text('Reprendre la mission en cours', style: TextStyle(fontWeight: FontWeight.bold)),
+                              label: const Text(
+                                'Reprendre la mission en cours',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                               onPressed: () {
-                                context.push('/livreur/mission-active/${_missionActive!.id}');
+                                context.push(
+                                  '/livreur/mission-active/${_missionActive!.id}',
+                                );
                               },
                             ),
                           ),
@@ -294,7 +343,11 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                   // Statistiques du jour
                   const Text(
                     "Aujourd'hui à Yaoundé",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF155E75),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -304,7 +357,7 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                           titre: 'Missions',
                           valeur: '$_missionsJour',
                           icone: Icons.check_circle_outline,
-                          couleur: Colors.blue,
+                          couleur: const Color(0xFF0E7490),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -333,31 +386,49 @@ class _TableauBordLivreurScreenState extends State<TableauBordLivreurScreen> {
                   // Actions rapides
                   const Text(
                     'Actions rapides',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF155E75),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   ListTile(
                     tileColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFEEF2FF),
-                      child: Icon(Icons.list_alt, color: Color(0xFF1E3A8A)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    title: const Text('Missions disponibles', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Trouver de nouvelles courses à livrer'),
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFE6F4F5),
+                      child: Icon(Icons.list_alt, color: Color(0xFF155E75)),
+                    ),
+                    title: const Text(
+                      'Missions disponibles',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'Trouver de nouvelles courses à livrer',
+                    ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => context.push('/livreur/missions'),
                   ),
                   const SizedBox(height: 10),
                   ListTile(
                     tileColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     leading: const CircleAvatar(
                       backgroundColor: Color(0xFFECFDF5),
                       child: Icon(Icons.history, color: Colors.green),
                     ),
-                    title: const Text('Historique des courses', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Détail des livraisons et gains de la semaine'),
+                    title: const Text(
+                      'Historique des courses',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'Détail des livraisons et gains de la semaine',
+                    ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => context.push('/livreur/historique'),
                   ),
@@ -372,7 +443,7 @@ class _StatCard extends StatelessWidget {
   final String titre;
   final String valeur;
   final IconData icone;
-  final MaterialColor couleur;
+  final Color couleur;
 
   const _StatCard({
     required this.titre,
@@ -390,11 +461,15 @@ class _StatCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         child: Column(
           children: [
-            Icon(icone, color: couleur[700], size: 24),
+            Icon(icone, color: couleur, size: 24),
             const SizedBox(height: 6),
             Text(
               valeur,
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: couleur[900]),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: couleur,
+              ),
             ),
             const SizedBox(height: 4),
             Text(

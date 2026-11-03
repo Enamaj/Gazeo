@@ -41,6 +41,10 @@ class AuthService {
     return token != null && token.isNotEmpty;
   }
 
+  Future<void> saveRole(String role) async {
+    await _storage.write(key: _userRoleKey, value: role);
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
