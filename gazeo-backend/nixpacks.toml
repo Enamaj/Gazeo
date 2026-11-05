@@ -1,0 +1,3 @@
+# Nixpacks configuration for GeoDjango PostGIS support
+[phases.setup]
+nixPkgs = ["python310", "gdal", "geos", "proj", "postgresql"]

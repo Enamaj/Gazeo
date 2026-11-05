@@ -47,3 +47,5 @@ django-jazzmin==3.0.5
 fakeredis==2.39.0
 locust==2.46.0
 qrcode==8.2
+whitenoise==6.8.2
+

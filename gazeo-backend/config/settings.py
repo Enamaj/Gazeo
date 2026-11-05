@@ -66,6 +66,7 @@ INSTALLED_APPS = ['jazzmin'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -99,6 +100,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
 }
+# Automatically use PostGIS backend when PostgreSQL is provided
+if 'postgresql' in DATABASES['default']['ENGINE']:
+    DATABASES['default']['ENGINE'] = 'django.contrib.gis.db.backends.postgis'
+
 
 # Custom User Model
 AUTH_USER_MODEL = 'auth_user.User'
