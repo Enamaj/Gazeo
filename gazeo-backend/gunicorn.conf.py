@@ -3,7 +3,8 @@ import multiprocessing
 
 # Configuration Gunicorn pour environnement de production GAZEO (Railway Pro)
 port = os.getenv("PORT", "8000")
-bind = f"0.0.0.0:{port}"
+# Écouter simultanément sur le port dynamique Railway ($PORT), sur 8080 et sur 8000 pour éliminer tout risque de 502
+bind = list({f"0.0.0.0:{port}", "0.0.0.0:8000", "0.0.0.0:8080"})
 
 # 4 workers par défaut pour Railway Pro
 workers = int(os.getenv("WEB_CONCURRENCY", "4"))

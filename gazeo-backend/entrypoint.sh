@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 echo "=== Démarrage de GAZEO Backend Production ==="
 
@@ -28,3 +27,4 @@ python manage.py migrate --no-input || {
 # 3. Démarrage Gunicorn
 echo "Lancement Gunicorn..."
 exec gunicorn config.wsgi:application --config gunicorn.conf.py
+
