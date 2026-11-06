@@ -18,16 +18,13 @@ class ApiService {
   // URL personnalisée via argument build/run (ex: --dart-define=API_URL=http://192.168.100.147:8000)
   static const String _envApiUrl = String.fromEnvironment('API_URL');
 
-  // URL de production officielle GAZEO à Yaoundé
-  static const String prodApiUrl = 'https://api.gazeo.cm';
+  // URL de production officielle GAZEO déployée sur Railway
+  static const String prodApiUrl = 'https://gazeo-production.up.railway.app';
 
-  // URL de l'API selon le mode (Production sécurisée en release, local en dev)
+  // URL de l'API : utilise la production Railway par défaut pour connecter tous les appareils réels
   static String get baseUrl {
     if (_envApiUrl.isNotEmpty) return _envApiUrl;
-    if (kReleaseMode) return prodApiUrl;
-    if (kIsWeb) return 'http://127.0.0.1:8000';
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000';
-    return 'http://127.0.0.1:8000';
+    return prodApiUrl;
   }
 
   ApiService._internal() {
