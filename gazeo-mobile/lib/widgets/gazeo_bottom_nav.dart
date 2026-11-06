@@ -17,20 +17,21 @@ class GazeoBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.slate200, width: 0.8)),
+        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 8,
-            offset: Offset(0, -2),
+            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: _buildItems(context),
@@ -50,10 +51,10 @@ class GazeoBottomNav extends StatelessWidget {
       ];
     } else if (role == GazeoNavRole.livreur) {
       return [
-        _buildNavItem(context, index: 0, icon: Icons.assignment_outlined, label: 'Missions', route: '/livreur/missions'),
-        _buildNavItem(context, index: 1, icon: Icons.two_wheeler_outlined, label: 'En cours', route: '/livreur/tableau-de-bord'),
-        _buildNavItem(context, index: 2, icon: Icons.history_rounded, label: 'Historique', route: '/livreur/historique'),
-        _buildNavItem(context, index: 3, icon: Icons.person_outline_rounded, label: 'Profil', route: '/compte'),
+        _buildLivreurNavItem(context, index: 0, icon: Icons.home_rounded, label: 'Accueil', route: '/livreur/tableau-de-bord'),
+        _buildLivreurNavItem(context, index: 1, icon: Icons.bar_chart_rounded, label: 'Statistiques', route: '/livreur/historique'),
+        _buildLivreurNavItem(context, index: 2, icon: Icons.notifications_none_rounded, label: 'Notifications', route: '/livreur/missions', badgeCount: 2),
+        _buildLivreurNavItem(context, index: 3, icon: Icons.person_outline_rounded, label: 'Profil', route: '/compte'),
       ];
     }
 
@@ -64,6 +65,99 @@ class GazeoBottomNav extends StatelessWidget {
       _buildNavItem(context, index: 2, icon: Icons.favorite_border_rounded, label: 'Favoris', route: '/depots'),
       _buildNavItem(context, index: 3, icon: Icons.person_outline_rounded, label: 'Profil', route: '/compte'),
     ];
+  }
+
+  Widget _buildLivreurNavItem(
+    BuildContext context, {
+    required int index,
+    required IconData icon,
+    required String label,
+    required String route,
+    int? badgeCount,
+  }) {
+    final isSelected = index == currentIndex;
+
+    if (isSelected) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0066FF),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0066FF).withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: () => context.go(route),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: const Color(0xFF64748B), size: 22),
+                if (badgeCount != null && badgeCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                      child: Text(
+                        '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildNavItem(
@@ -104,4 +198,3 @@ class GazeoBottomNav extends StatelessWidget {
     );
   }
 }
-
