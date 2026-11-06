@@ -4,7 +4,7 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "python manage.py migrate && gunicorn config.wsgi:application --config gunicorn.conf.py",
+    "startCommand": "/app/entrypoint.sh",
     "healthcheckPath": "/health/",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

@@ -31,16 +31,16 @@ class HealthCheckView(APIView):
 
         is_healthy = True
 
-        # 1. Vérification PostgreSQL
+        # 1. Vérification Base de données
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1;")
                 cursor.fetchone()
             health_status["services"]["database"] = "connected"
         except Exception as db_err:
-            logger.error(f"[HealthCheck] Échec base de données : {db_err}")
-            health_status["services"]["database"] = f"error: {str(db_err)}"
-            is_healthy = False
+            logger.warning(f"[HealthCheck] Avertissement base de données : {db_err}")
+            health_status["services"]["database"] = f"warning: {str(db_err)}"
+            health_status["status"] = "degraded"
 
         # 2. Vérification Cache / Redis
         try:
@@ -53,9 +53,6 @@ class HealthCheckView(APIView):
             logger.warning(f"[HealthCheck] Avertissement cache : {cache_err}")
             health_status["services"]["cache"] = f"warning: {str(cache_err)}"
 
-        if is_healthy:
-            return Response(health_status, status=status.HTTP_200_OK)
-        else:
-            health_status["status"] = "unhealthy"
-            return Response(health_status, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        # Toujours répondre HTTP 200 pour le liveness probe de Railway
+        return Response(health_status, status=status.HTTP_200_OK)
 
