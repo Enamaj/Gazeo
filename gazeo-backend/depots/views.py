@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from django.core.cache import cache
 from django.contrib.gis.db.models.functions import Distance
@@ -33,6 +34,22 @@ from commandes.serializers import CommandeGerantSerializer
 from auth_user.models import GerantKYC, UserRole
 
 logger = logging.getLogger(__name__)
+
+
+class DistanceObj:
+    def __init__(self, meters: float):
+        self.m = float(meters)
+        self.km = float(meters) / 1000.0
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return R * c
 
 
 
@@ -100,39 +117,70 @@ class DepotsProchesView(APIView):
             resp['X-Response-Time-ms'] = f"{duration_ms:.2f}"
             return resp
 
-        point_utilisateur = Point(longitude, latitude, srid=4326)
+        try:
+            point_utilisateur = Point(longitude, latitude, srid=4326)
 
-        queryset = Depot.objects.filter(
-            est_actif=True,
-            localisation__dwithin=(point_utilisateur, D(m=rayon_metres))
-        )
-
-        if stock_filter:
-            queryset = queryset.filter(Q(stock_6kg__gt=0) | Q(stock_12kg__gt=0))
-
-        if marque:
-            queryset = queryset.filter(
-                marques_disponibles__icontains=marque
+            queryset = Depot.objects.filter(
+                est_actif=True,
+                localisation__dwithin=(point_utilisateur, D(m=rayon_metres))
             )
 
-        if quartier:
-            queryset = queryset.filter(quartier__icontains=quartier)
+            if stock_filter:
+                queryset = queryset.filter(Q(stock_6kg__gt=0) | Q(stock_12kg__gt=0))
 
-        # Annotation de distance et tri croissant
-        depots = (
-            queryset.annotate(distance=Distance('localisation', point_utilisateur))
-            .order_by('distance')[:20]
-        )
+            if marque:
+                queryset = queryset.filter(
+                    marques_disponibles__icontains=marque
+                )
 
-        serializer = DepotProcheSerializer(depots, many=True)
+            if quartier:
+                queryset = queryset.filter(quartier__icontains=quartier)
+
+            # Annotation de distance et tri croissant
+            depots = (
+                queryset.annotate(distance=Distance('localisation', point_utilisateur))
+                .order_by('distance')[:20]
+            )
+
+            serializer = DepotProcheSerializer(depots, many=True)
+            depots_data = serializer.data
+        except Exception as gis_err:
+            logger.warning(f"[DepotsProches] Fallback spatial pur Python (Haversine) : {gis_err}")
+            queryset = Depot.objects.filter(est_actif=True)
+
+            if stock_filter:
+                queryset = queryset.filter(Q(stock_6kg__gt=0) | Q(stock_12kg__gt=0))
+
+            if marque:
+                queryset = queryset.filter(
+                    marques_disponibles__icontains=marque
+                )
+
+            if quartier:
+                queryset = queryset.filter(quartier__icontains=quartier)
+
+            depots_list = []
+            for d in queryset:
+                d_lat = d.latitude
+                d_lon = d.longitude
+                if d_lat is not None and d_lon is not None:
+                    dist = haversine_m(latitude, longitude, d_lat, d_lon)
+                    if dist <= rayon_metres:
+                        d.distance = DistanceObj(dist)
+                        depots_list.append(d)
+
+            depots_list.sort(key=lambda x: x.distance.m)
+            serializer = DepotProcheSerializer(depots_list[:20], many=True)
+            depots_data = serializer.data
+
         response_data = {
-            "count": len(serializer.data),
+            "count": len(depots_data),
             "rayon_metres": rayon_metres,
             "centre": {
                 "latitude": latitude,
                 "longitude": longitude
             },
-            "depots": serializer.data
+            "depots": depots_data
         }
 
         # Mise en cache 2 minutes (120 secondes)

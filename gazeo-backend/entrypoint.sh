@@ -24,7 +24,11 @@ python manage.py migrate --no-input || {
     echo "Attention : échec migrate, démarrage gunicorn en cours..."
 }
 
-# 3. Démarrage Gunicorn
+# 3. Import initial des dépôts de Yaoundé (si la table est vide)
+echo "Initialisation catalogue dépôts Yaoundé..."
+python manage.py import_depots || true
+
+# 4. Démarrage Gunicorn
 echo "Lancement Gunicorn..."
 exec gunicorn config.wsgi:application --config gunicorn.conf.py
 

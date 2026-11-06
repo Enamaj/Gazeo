@@ -36,7 +36,7 @@ class HealthCheckView(APIView):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1;")
                 cursor.fetchone()
-            health_status["services"]["database"] = "connected"
+            health_status["services"]["database"] = f"connected ({connection.vendor})"
         except Exception as db_err:
             logger.warning(f"[HealthCheck] Avertissement base de données : {db_err}")
             health_status["services"]["database"] = f"warning: {str(db_err)}"

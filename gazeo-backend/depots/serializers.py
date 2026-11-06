@@ -58,12 +58,16 @@ class DepotProcheSerializer(serializers.ModelSerializer):
 
     def get_distance_metres(self, obj) -> float | None:
         if hasattr(obj, 'distance') and obj.distance is not None:
-            return round(obj.distance.m, 1)
+            if hasattr(obj.distance, 'm'):
+                return round(float(obj.distance.m), 1)
+            return round(float(obj.distance), 1)
         return None
 
     def get_distance_km(self, obj) -> float | None:
         if hasattr(obj, 'distance') and obj.distance is not None:
-            return round(obj.distance.km, 2)
+            if hasattr(obj.distance, 'km'):
+                return round(float(obj.distance.km), 2)
+            return round(float(obj.distance) / 1000.0, 2)
         return None
 
     def get_note_moyenne(self, obj) -> float | None:
