@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "620321619641",
+    "project_id": "gazeo-f3e5e",
+    "storage_bucket": "gazeo-f3e5e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:620321619641:android:ea5a286f01520d6ae22568",
+        "android_client_info": {
+          "package_name": "cm.gazeo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAgF_v2B-sFf3jryHapsadkwKP9HfOHPAQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

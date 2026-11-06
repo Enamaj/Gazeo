@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
@@ -16,6 +17,13 @@ void main() {
       systemNavigationBarDividerColor: Colors.transparent,
     ),
   );
+
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('[Firebase] Erreur initialisation : $e');
+  }
+
   runApp(const GazeoApp());
 }
 
