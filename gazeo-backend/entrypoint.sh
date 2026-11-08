@@ -38,24 +38,23 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 admin_phone = os.environ.get('GAZEO_ADMIN_PHONE', '+237699000000')
 admin_pass = os.environ.get('GAZEO_ADMIN_PASSWORD', 'GazeoAdmin2026!')
-user, created = User.objects.get_or_create(
-    telephone=admin_phone,
-    defaults={
-        'username': 'admin',
-        'email': 'admin@gazeo.cm',
-        'role': 'ADMIN',
-        'is_staff': True,
-        'is_superuser': True,
-        'is_verified': True,
-    }
-)
-user.set_password(admin_pass)
-user.is_staff = True
-user.is_superuser = True
-user.role = 'ADMIN'
-user.is_verified = True
-user.save()
-print(f'Compte Administrateur prêt : {admin_phone}')
+
+try:
+    user = User.objects.filter(telephone=admin_phone).first() or User.objects.filter(username='admin').first()
+    if not user:
+        user = User(telephone=admin_phone, username='admin', email='admin@gazeo.cm')
+    user.telephone = admin_phone
+    user.username = 'admin'
+    user.set_password(admin_pass)
+    user.is_staff = True
+    user.is_superuser = True
+    user.role = 'ADMIN'
+    user.is_verified = True
+    user.is_active = True
+    user.save()
+    print(f'Compte Administrateur prêt : {admin_phone}')
+except Exception as e:
+    print(f'Erreur configuration admin : {e}')
 " || true
 
 # 5. Démarrage Gunicorn

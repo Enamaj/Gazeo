@@ -56,3 +56,17 @@ class HealthCheckView(APIView):
         # Toujours répondre HTTP 200 pour le liveness probe de Railway
         return Response(health_status, status=status.HTTP_200_OK)
 
+
+from django.http import HttpResponse
+
+def custom_error_500(request):
+    import sys, traceback
+    exc_type, exc_value, exc_traceback = sys.exc_info()
+    trace = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback)) if exc_value else "No exception context."
+    logger.error(f"[GAZEO 500 ERROR]\n{trace}")
+    return HttpResponse(
+        f"GAZEO 500 SERVER ERROR:\n\n{trace}",
+        content_type="text/plain; charset=utf-8",
+        status=500
+    )
+
