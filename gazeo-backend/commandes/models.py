@@ -36,16 +36,35 @@ class Commande(models.Model):
     quantite_6kg = models.PositiveIntegerField(default=0, help_text="Nombre de bouteilles 6kg")
     quantite_12kg = models.PositiveIntegerField(default=0, help_text="Nombre de bouteilles 12.5kg")
 
-    montant_total = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text="Montant total de la commande (gaz + livraison en FCFA)"
+    # Répartition financière GAZEO en FCFA (IntegerField)
+    prix_bouteille = models.IntegerField(
+        default=0,
+        help_text="Prix fixe réglementé de la bouteille de gaz (100% au gérant, en FCFA)"
     )
-    frais_livraison = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=1000.00,
-        help_text="Frais de livraison appliqués (FCFA)"
+    frais_livraison = models.IntegerField(
+        default=1500,
+        help_text="Frais de livraison calculés selon la distance GPS PostGIS (en FCFA)"
+    )
+    commission_gazeo = models.IntegerField(
+        default=300,
+        help_text="Commission GAZEO (20% des frais de livraison en FCFA)"
+    )
+    montant_livreur = models.IntegerField(
+        default=1200,
+        help_text="Part du livreur (80% des frais de livraison en FCFA)"
+    )
+    montant_total_client = models.IntegerField(
+        default=0,
+        help_text="Montant total payé par le client : prix_bouteille + frais_livraison (en FCFA)"
+    )
+    montant_gerant = models.IntegerField(
+        default=0,
+        help_text="Montant reversé au gérant : prix_bouteille + montant_livreur (en FCFA)"
+    )
+    # Champ rétrocompatible
+    montant_total = models.IntegerField(
+        default=0,
+        help_text="Total payé par le client (alias FCFA)"
     )
 
     statut = models.CharField(
@@ -74,6 +93,84 @@ class Commande(models.Model):
 
     def __str__(self):
         return f"Commande #{self.id} - {self.client.telephone} ({self.get_statut_display()})"
+
+    def get_distance_km(self) -> float:
+        """
+        Calcule la distance réelle en km entre le dépôt et l'adresse client :
+        1. Utilise la géométrie PostGIS si disponible
+        2. Fallback direct sur la formule Haversine (Yaoundé)
+        """
+        if not self.depot or self.latitude_livraison is None or self.longitude_livraison is None:
+            return 2.5
+
+        try:
+            from django.contrib.gis.geos import Point
+            pt_client = Point(float(self.longitude_livraison), float(self.latitude_livraison), srid=4326)
+            if self.depot.localisation:
+                dist = self.depot.localisation.distance(pt_client)
+                # Si calcul en degrés géographiques, convertir en km approximatif
+                if dist < 1.0:
+                    dist_km = dist * 111.32
+                else:
+                    dist_km = dist / 1000.0
+                return round(dist_km, 2)
+        except Exception:
+            pass
+
+        import math
+        lat1 = self.depot.latitude or 3.8667
+        lon1 = self.depot.longitude or 11.5167
+        lat2 = float(self.latitude_livraison)
+        lon2 = float(self.longitude_livraison)
+
+        R = 6371.0
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (math.sin(dlat / 2.0) ** 2 +
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+             math.sin(dlon / 2.0) ** 2)
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+        return round(R * c, 2)
+
+    @staticmethod
+    def calculer_frais_livraison_grille(distance_km: float) -> int:
+        """
+        Grille officielle des frais de livraison GAZEO à Yaoundé :
+        - 0 à 3 km → 1 500 FCFA
+        - 3 à 6 km → 2 000 FCFA
+        - 6 à 12 km → 2 500 FCFA
+        """
+        if distance_km <= 3.0:
+            return 1500
+        elif distance_km <= 6.0:
+            return 2000
+        elif distance_km <= 12.0:
+            return 2500
+        else:
+            return 3000
+
+    def calculer_repartition_financiere(self, prix_gaz: int = None, distance_km: float = None):
+        """
+        Implémente les règles financières officielles GAZEO :
+        - prix_bouteille : prix fixe réglementé, va 100% au gérant
+        - frais_livraison : calculé selon la distance (PostGIS)
+        - commission_gazeo : 20% des frais_livraison
+        - montant_livreur : 80% des frais_livraison
+        - montant_total_client : prix_bouteille + frais_livraison
+        - montant_gerant : prix_bouteille + montant_livreur
+        """
+        if prix_gaz is not None:
+            self.prix_bouteille = int(prix_gaz)
+
+        if distance_km is None:
+            distance_km = self.get_distance_km()
+
+        self.frais_livraison = self.calculer_frais_livraison_grille(distance_km)
+        self.commission_gazeo = int(round(self.frais_livraison * 0.20))
+        self.montant_livreur = self.frais_livraison - self.commission_gazeo  # Exact 80%
+        self.montant_total_client = int(self.prix_bouteille) + int(self.frais_livraison)
+        self.montant_gerant = int(self.prix_bouteille) + int(self.montant_livreur)
+        self.montant_total = self.montant_total_client
 
 
 class SuiviPosition(models.Model):

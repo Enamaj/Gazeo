@@ -140,3 +140,70 @@ class NotchpayService:
             logger.error(f"[NotchpayService] Erreur lors du remboursement : {e}")
             raise
 
+    def effectuer_transfert(
+        self,
+        beneficiaire: str,
+        montant: int,
+        description: str = "",
+        reference: str = None
+    ) -> dict:
+        """
+        Déclenche un virement / transfert sortant vers un bénéficiaire Mobile Money (MTN / Orange)
+        ou vers le compte marchand GAZEO.
+        En mode bac à sable ou simulation, génère une référence de transfert valide.
+        """
+        import uuid
+        ref = reference or f"TRF-{uuid.uuid4().hex[:12].upper()}"
+
+        headers = {
+            "Authorization": f"Bearer {self.public_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        # Simulation si sandbox / dev ou pas de clés production
+        if not self.public_key or self.public_key.startswith("sb.") or settings.DEBUG:
+            logger.info(
+                f"[NotchpayService - SIMULATION] Virement de {montant} FCFA "
+                f"vers {beneficiaire} - Ref: {ref} ({description})"
+            )
+            return {
+                "status": "success",
+                "reference": ref,
+                "amount": int(montant),
+                "beneficiaire": beneficiaire,
+                "simulation": True,
+            }
+
+        try:
+            payload = {
+                "amount": int(montant),
+                "currency": "XAF",
+                "recipient": beneficiaire,
+                "reference": ref,
+                "description": description or f"Virement GAZEO {ref}",
+            }
+            response = requests.post(
+                "https://api.notchpay.co/transfers",
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            data = response.json()
+            logger.info(f"[NotchpayService] Réponse virement {ref}: {data}")
+            return {
+                "status": "success" if response.status_code in (200, 201) else "pending",
+                "reference": data.get("reference", ref),
+                "amount": int(montant),
+                "raw": data
+            }
+        except Exception as e:
+            logger.error(f"[NotchpayService] Erreur transfert vers {beneficiaire}: {e}")
+            return {
+                "status": "pending",
+                "reference": ref,
+                "amount": int(montant),
+                "error": str(e)
+            }
+
+

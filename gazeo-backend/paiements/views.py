@@ -59,11 +59,13 @@ class InitierPaiementView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Appel au service Notchpay
+        montant_a_payer = int(commande.montant_total_client) if commande.montant_total_client else int(commande.montant_total)
+
+        # Appel au service Notchpay pour collecter montant_total_client
         result = notchpay_service.initier_paiement(
             commande_id=commande.id,
             telephone=telephone,
-            montant=commande.montant_total,
+            montant=montant_a_payer,
             description=f"Règlement GAZEO Commande #{commande.id}"
         )
 
@@ -72,10 +74,11 @@ class InitierPaiementView(APIView):
             commande=commande,
             defaults={
                 'reference_notchpay': result['reference'],
-                'montant': commande.montant_total,
+                'montant': montant_a_payer,
                 'statut': StatutPaiement.PENDING,
             }
         )
+        paiement.montant = montant_a_payer
         paiement.reference_notchpay = result['reference']
         paiement.save()
 
@@ -83,7 +86,8 @@ class InitierPaiementView(APIView):
             "message": "Paiement initialisé",
             "authorization_url": result['authorization_url'],
             "reference": result['reference'],
-            "montant": float(commande.montant_total),
+            "montant": int(montant_a_payer),
+            "montant_total_client": int(montant_a_payer),
             "paiement_id": paiement.id,
         }, status=status.HTTP_200_OK)
 

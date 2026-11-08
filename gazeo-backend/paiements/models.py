@@ -90,9 +90,64 @@ class Paiement(models.Model):
         return f"Paiement {self.reference_notchpay} ({self.get_statut_display()}) - {self.montant} FCFA"
 
     def calculer_commissions(self):
-        """Calcule la commission GAZEO de 1,5% et le net gérant."""
-        self.commission_gazeo = round(self.montant * Decimal('0.015'), 2)
-        self.montant_net_gerant = round(self.montant - self.commission_gazeo, 2)
+        """
+        Calcule la commission GAZEO et le montant gérant selon les règles officielles :
+        - Si la commande a calculé sa répartition financière, reprend commission_gazeo et montant_gerant.
+        - Sinon fallback sur 1.5% classique.
+        """
+        if self.commande and hasattr(self.commande, 'commission_gazeo') and self.commande.commission_gazeo:
+            self.commission_gazeo = Decimal(str(self.commande.commission_gazeo))
+            self.montant_net_gerant = Decimal(str(self.commande.montant_gerant))
+        else:
+            self.commission_gazeo = round(self.montant * Decimal('0.015'), 2)
+            self.montant_net_gerant = round(self.montant - self.commission_gazeo, 2)
+
+
+class TypeVirement(models.TextChoices):
+    GERANT_MOMO = 'GERANT_MOMO', 'Virement Gérant (MoMo)'
+    GAZEO_COMMISSION = 'GAZEO_COMMISSION', 'Commission GAZEO (Compte GAZEO)'
+
+
+class VirementCommande(models.Model):
+    commande = models.ForeignKey(
+        'commandes.Commande',
+        on_delete=models.CASCADE,
+        related_name='virements',
+        help_text="Commande liée au virement"
+    )
+    type_virement = models.CharField(
+        max_length=30,
+        choices=TypeVirement.choices,
+        help_text="Type de virement"
+    )
+    beneficiaire = models.CharField(
+        max_length=100,
+        help_text="Numéro MoMo du gérant ou Compte GAZEO"
+    )
+    montant = models.IntegerField(
+        help_text="Montant en FCFA transféré (IntegerField)"
+    )
+    statut = models.CharField(
+        max_length=20,
+        choices=StatutVirement.choices,
+        default=StatutVirement.VIRE,
+        help_text="État du transfert"
+    )
+    reference_transfert = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Référence unique de la transaction Notchpay / MoMo"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Virement Commande"
+        verbose_name_plural = "Virements Commandes"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_type_virement_display()} : {self.montant} FCFA -> {self.beneficiaire} ({self.statut})"
 
 
 class VirementHebdomadaire(models.Model):

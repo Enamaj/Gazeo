@@ -89,35 +89,35 @@ class CreerCommandeView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # 3. Calculs financiers
-                montant_gaz = (qte_6 * depot.prix_6kg) + (qte_12 * depot.prix_12kg)
-                frais_livraison = Decimal('1000.00')
-                montant_total = montant_gaz + frais_livraison
+                # 3. Calculs financiers selon la grille GAZEO
+                montant_gaz = int((qte_6 * depot.prix_6kg) + (qte_12 * depot.prix_12kg))
 
                 # 4. Déduction atomique du stock
                 depot.stock_6kg -= qte_6
                 depot.stock_12kg -= qte_12
                 depot.save(update_fields=['stock_6kg', 'stock_12kg', 'updated_at'])
 
-                # 5. Création de la commande
+                # 5. Création de la commande avec calcul automatique de la répartition financière
                 code_otp = generate_delivery_code()
-                commande = Commande.objects.create(
+                commande = Commande(
                     client=request.user,
                     depot=depot,
                     quantite_6kg=qte_6,
                     quantite_12kg=qte_12,
-                    montant_total=montant_total,
-                    frais_livraison=frais_livraison,
-                    statut=StatutCommande.EN_ATTENTE,
                     adresse_livraison=data['adresse_livraison'],
                     latitude_livraison=data['latitude_livraison'],
                     longitude_livraison=data['longitude_livraison'],
                     code_confirmation=code_otp,
+                    statut=StatutCommande.EN_ATTENTE,
                 )
+                commande.calculer_repartition_financiere(prix_gaz=montant_gaz)
+                commande.save()
 
                 logger.info(
                     f"[GAZEO Commande] Créée #{commande.id} par {request.user.telephone} "
-                    f"au dépôt {depot.nom} - Total: {montant_total} FCFA"
+                    f"au dépôt {depot.nom} - Total: {commande.montant_total_client} FCFA "
+                    f"(Gaz: {commande.prix_bouteille}, Livraison: {commande.frais_livraison}, "
+                    f"Gérant: {commande.montant_gerant}, GAZEO: {commande.commission_gazeo})"
                 )
 
                 # Notifications FCM au gérant du dépôt
@@ -132,13 +132,17 @@ class CreerCommandeView(APIView):
                     logger.warning(f"Erreur notification FCM commande #{commande.id}: {fcm_err}")
 
                 return Response({
-
                     "message": "Commande créée avec succès",
                     "commande_id": commande.id,
-                    "montant_total": float(montant_total),
-                    "frais_livraison": float(frais_livraison),
-                    "code_confirmation": commande.code_confirmation,
+                    "prix_bouteille": commande.prix_bouteille,
+                    "frais_livraison": commande.frais_livraison,
+                    "commission_gazeo": commande.commission_gazeo,
+                    "montant_livreur": commande.montant_livreur,
+                    "montant_total_client": commande.montant_total_client,
+                    "montant_gerant": commande.montant_gerant,
+                    "montant_total": commande.montant_total,
                     "statut": commande.statut,
+                    "code_confirmation": commande.code_confirmation,
                     "commande": CommandeDetailSerializer(commande).data,
                 }, status=status.HTTP_201_CREATED)
 
@@ -290,6 +294,16 @@ class ConfirmerCommandeView(APIView):
                 type=TypeTransaction.GAIN
             )
 
+        # Déclenchement automatique des virements de répartition financière :
+        # 1. montant_gerant -> numéro MoMo du gérant
+        # 2. commission_gazeo -> compte GAZEO
+        info_virements = {}
+        try:
+            from paiements.services.virement_service import VirementService
+            info_virements = VirementService.executer_repartition_livraison(commande)
+        except Exception as err_vir:
+            logger.error(f"[Virement] Erreur lors des virements commande #{commande.id}: {err_vir}")
+
         # Notification FCM au client pour noter la livraison
         try:
             from notifications.services.fcm_service import FCMService
@@ -298,11 +312,19 @@ class ConfirmerCommandeView(APIView):
             logger.warning(f"Erreur FCM demande notation: {e}")
 
         return Response({
-
-            "message": "Livraison confirmée avec succès. Points de fidélité crédités.",
+            "message": "Livraison confirmée avec succès. Répartition financière et points de fidélité validés.",
             "statut": commande.statut,
             "points_gagnes": 10,
             "nouveau_solde_points": client.points_fidelite,
+            "repartition_financiere": {
+                "prix_bouteille": commande.prix_bouteille,
+                "frais_livraison": commande.frais_livraison,
+                "commission_gazeo": commande.commission_gazeo,
+                "montant_livreur": commande.montant_livreur,
+                "montant_gerant": commande.montant_gerant,
+                "montant_total_client": commande.montant_total_client,
+            },
+            "virements": info_virements,
             "commande": CommandeDetailSerializer(commande).data
         }, status=status.HTTP_200_OK)
 
