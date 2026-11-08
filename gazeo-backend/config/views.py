@@ -59,6 +59,64 @@ class HealthCheckView(APIView):
 
 from django.http import HttpResponse
 
+class MigrateView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from io import StringIO
+        from django.core.management import call_command
+        import traceback
+
+        out = StringIO()
+        err = StringIO()
+        try:
+            # 1. Vérification / Activation PostGIS
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+                out.write("PostGIS extension vérifiée.\n")
+            except Exception as e:
+                out.write(f"PostGIS info: {e}\n")
+
+            # 2. Exécution des migrations
+            call_command('migrate', stdout=out, stderr=err, interactive=False)
+
+            # 3. Import des dépôts de Yaoundé
+            try:
+                call_command('import_depots', stdout=out, stderr=err)
+            except Exception as e:
+                out.write(f"Import depots info: {e}\n")
+
+            # 4. Création Superuser
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            u = User.objects.filter(telephone='+237699000000').first() or User.objects.filter(username='admin').first()
+            if not u:
+                u = User(telephone='+237699000000', username='admin', email='admin@gazeo.cm')
+            u.telephone = '+237699000000'
+            u.username = 'admin'
+            u.set_password('GazeoAdmin2026!')
+            u.is_staff = True
+            u.is_superuser = True
+            u.role = 'ADMIN'
+            u.is_verified = True
+            u.is_active = True
+            u.save()
+            out.write("\nCompte Super Administrateur prêt : +237699000000 / GazeoAdmin2026!\n")
+
+            return HttpResponse(
+                f"=== GAZEO DATABASE INITIALIZATION SUCCESS ===\n\nSTDOUT:\n{out.getvalue()}\n\nSTDERR:\n{err.getvalue()}",
+                content_type="text/plain; charset=utf-8"
+            )
+        except Exception as e:
+            trace = traceback.format_exc()
+            return HttpResponse(
+                f"=== GAZEO DATABASE INITIALIZATION FAILED ===\n\nError: {e}\n\nTraceback:\n{trace}\n\nSTDOUT:\n{out.getvalue()}\n\nSTDERR:\n{err.getvalue()}",
+                content_type="text/plain; charset=utf-8",
+                status=500
+            )
+
+
 def custom_error_500(request):
     import sys, traceback
     exc_type, exc_value, exc_traceback = sys.exc_info()
