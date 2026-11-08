@@ -59,9 +59,45 @@ class InitierPaiementView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Protection Anti-Double Débit (Verrou & Idempotence)
+        paiement_existant = Paiement.objects.filter(commande=commande).first()
+        if paiement_existant:
+            # 1. Si la commande a déjà été payée avec succès, interdire tout nouveau paiement
+            if paiement_existant.statut == StatutPaiement.SUCCESS:
+                return Response(
+                    {
+                        "detail": "Cette commande a déjà été réglée avec succès.",
+                        "reference": paiement_existant.reference_notchpay,
+                        "statut": "deja_paye",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 2. Si une transaction est déjà en cours (PENDING) initiée il y a moins de 15 minutes,
+            #    on réutilise la même session de paiement pour éviter un double débit en cas de lag réseau
+            delai_expiration = timezone.now() - timedelta(minutes=15)
+            if paiement_existant.statut == StatutPaiement.PENDING and paiement_existant.updated_at > delai_expiration:
+                logger.info(
+                    f"[Anti-Double Débit] Réutilisation session existante {paiement_existant.reference_notchpay} "
+                    f"pour la commande #{commande.id}"
+                )
+                auth_url = f"https://pay.notchpay.co/checkout/{paiement_existant.reference_notchpay}"
+                if paiement_existant.raw_response and 'authorization_url' in paiement_existant.raw_response:
+                    auth_url = paiement_existant.raw_response['authorization_url']
+
+                return Response({
+                    "message": "Session de paiement déjà active pour cette commande",
+                    "authorization_url": auth_url,
+                    "reference": paiement_existant.reference_notchpay,
+                    "montant": int(paiement_existant.montant),
+                    "montant_total_client": int(paiement_existant.montant),
+                    "paiement_id": paiement_existant.id,
+                    "session_reutilisee": True,
+                }, status=status.HTTP_200_OK)
+
         montant_a_payer = int(commande.montant_total_client) if commande.montant_total_client else int(commande.montant_total)
 
-        # Appel au service Notchpay pour collecter montant_total_client
+        # Appel au service Notchpay pour collecter montant_total_client avec référence déterministe
         result = notchpay_service.initier_paiement(
             commande_id=commande.id,
             telephone=telephone,
@@ -69,18 +105,22 @@ class InitierPaiementView(APIView):
             description=f"Règlement GAZEO Commande #{commande.id}"
         )
 
-        # Enregistrement ou mise à jour du Paiement
-        paiement, _ = Paiement.objects.get_or_create(
-            commande=commande,
-            defaults={
-                'reference_notchpay': result['reference'],
-                'montant': montant_a_payer,
-                'statut': StatutPaiement.PENDING,
-            }
-        )
-        paiement.montant = montant_a_payer
-        paiement.reference_notchpay = result['reference']
-        paiement.save()
+        # Enregistrement atomique du Paiement
+        with transaction.atomic():
+            paiement, _ = Paiement.objects.get_or_create(
+                commande=commande,
+                defaults={
+                    'reference_notchpay': result['reference'],
+                    'montant': montant_a_payer,
+                    'statut': StatutPaiement.PENDING,
+                    'raw_response': result.get('raw', {}),
+                }
+            )
+            paiement.montant = montant_a_payer
+            paiement.reference_notchpay = result['reference']
+            if 'raw' in result:
+                paiement.raw_response = result['raw']
+            paiement.save()
 
         return Response({
             "message": "Paiement initialisé",
