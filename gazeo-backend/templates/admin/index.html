@@ -4,93 +4,640 @@
 {% block content %}
 {% get_admin_kpis as kpis %}
 
-<div class="container-fluid mb-4">
-    <!-- Ligne des 4 Cartes KPI GAZEO -->
-    <div class="row">
-        <!-- KPI 1 : Commandes & CA du jour -->
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-info">
-                <div class="inner">
-                    <h3>{{ kpis.nb_commandes_jour }}</h3>
-                    <p>Commandes Aujourd'hui<br><strong>{{ kpis.ca_jour }} FCFA</strong></p>
-                </div>
-                <div class="icon">
-                    <i class="fas fa-shopping-cart"></i>
-                </div>
-                <a href="/admin/commandes/commande/" class="small-box-footer">
-                    Voir les commandes <i class="fas fa-arrow-circle-right"></i>
-                </a>
-            </div>
-        </div>
+<!-- Style CSS Custom GAZEO Premium -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-        <!-- KPI 2 : Gérants en attente de KYC -->
-        <div class="col-lg-3 col-6">
-            <div class="small-box {% if kpis.nb_kyc_attente > 0 %}bg-warning{% else %}bg-secondary{% endif %}">
-                <div class="inner">
-                    <h3>{{ kpis.nb_kyc_attente }}</h3>
-                    <p>Gérants en attente KYC<br><small>Validation requise</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fas fa-id-card"></i>
-                </div>
-                <a href="/admin/auth_user/gerantkyc/?statut__exact=EN_ATTENTE" class="small-box-footer">
-                    Vérifier les dossiers <i class="fas fa-arrow-circle-right"></i>
-                </a>
-            </div>
-        </div>
+  :root {
+    --gazeo-primary: #1e3a8a;
+    --gazeo-accent: #f97316;
+    --gazeo-cyan: #0284c7;
+    --gazeo-success: #10b981;
+    --gazeo-danger: #ef4444;
+    --gazeo-warning: #f59e0b;
+    --gazeo-dark: #0f172a;
+    --gazeo-card-bg: #ffffff;
+    --gazeo-card-border: #e2e8f0;
+  }
 
-        <!-- KPI 3 : Dépôts en rupture de stock -->
-        <div class="col-lg-3 col-6">
-            <div class="small-box {% if kpis.nb_depots_rupture > 0 %}bg-danger{% else %}bg-success{% endif %}">
-                <div class="inner">
-                    <h3>{{ kpis.nb_depots_rupture }}</h3>
-                    <p>Dépôts en Rupture Totale<br><small>Stock 6kg & 12.5kg = 0</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fas fa-exclamation-triangle"></i>
-                </div>
-                <a href="/admin/depots/depot/" class="small-box-footer">
-                    Superviser les dépôts <i class="fas fa-arrow-circle-right"></i>
-                </a>
-            </div>
-        </div>
+  .content-wrapper {
+    background-color: #f8fafc !important;
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+  }
 
-        <!-- KPI 4 : Taux de livraison réussie -->
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-success">
-                <div class="inner">
-                    <h3>{{ kpis.taux_livraison_7j }} %</h3>
-                    <p>Taux de Livraison (7 jours)<br><small>Qualité de service client</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fas fa-truck"></i>
-                </div>
-                <a href="/admin/analytics/daily/" class="small-box-footer">
-                    Rapport Analytics JSON <i class="fas fa-arrow-circle-right"></i>
-                </a>
-            </div>
+  .gazeo-hero-banner {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #0369a1 100%);
+    border-radius: 20px;
+    padding: 28px 32px;
+    color: white;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.2);
+  }
+
+  .gazeo-hero-banner::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 380px;
+    height: 380px;
+    background: radial-gradient(circle, rgba(249, 115, 22, 0.25) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .gazeo-badge-pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #34d399;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  .gazeo-badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: pulseDot 2s infinite;
+  }
+
+  @keyframes pulseDot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+
+  .gazeo-btn-action {
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none !important;
+  }
+
+  .gazeo-btn-action:hover {
+    background: white;
+    color: #0f172a !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .gazeo-stat-card {
+    background: white;
+    border-radius: 18px;
+    padding: 22px 24px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -2px rgba(15, 23, 42, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .gazeo-stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 25px -4px rgba(15, 23, 42, 0.1);
+  }
+
+  .gazeo-stat-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .gazeo-stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.1;
+    margin: 10px 0 4px 0;
+  }
+
+  .gazeo-stat-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .gazeo-section-card {
+    background: white;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -2px rgba(15, 23, 42, 0.05);
+    margin-bottom: 28px;
+    overflow: hidden;
+  }
+
+  .gazeo-card-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .gazeo-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .gazeo-table {
+    margin: 0;
+  }
+
+  .gazeo-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 20px;
+    border: none;
+  }
+
+  .gazeo-table td {
+    padding: 14px 20px;
+    vertical-align: middle;
+    border-top: 1px solid #f1f5f9;
+    font-size: 13px;
+    color: #1e293b;
+  }
+
+  .gazeo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .pill-success { background: #dcfce7; color: #15803d; }
+  .pill-warning { background: #fef3c7; color: #b45309; }
+  .pill-danger { background: #fee2e2; color: #b91c1c; }
+  .pill-info { background: #e0f2fe; color: #0369a1; }
+</style>
+
+<div class="container-fluid px-3 py-2">
+
+  <!-- 1. Hero Banner Présentation & Statut Live -->
+  <div class="gazeo-hero-banner">
+    <div class="row align-items-center">
+      <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div class="gazeo-badge-pulse">
+            <span class="gazeo-badge-dot"></span>
+            SYSTÈME PRODUCTION GAZEO EN LIGNE
+          </div>
+          <span style="opacity: 0.8; font-size: 12px; font-weight: 500;">
+            <i class="fas fa-map-marker-alt text-warning"></i> Yaoundé, Cameroun
+          </span>
         </div>
+        <h2 style="font-weight: 800; font-size: 26px; margin: 0 0 6px 0; letter-spacing: -0.5px;">
+          Tableau de Bord Administrateur
+        </h2>
+        <p style="opacity: 0.85; font-size: 13px; margin: 0; max-width: 520px; line-height: 1.5;">
+          Supervision de la distribution de gaz domestique, validation des dossiers KYC des gérants et suivi de la flotte de livraison en temps réel.
+        </p>
+      </div>
+
+      <div class="col-lg-5 text-lg-right mt-3 mt-lg-0">
+        <div class="d-flex flex-wrap justify-content-lg-end gap-2">
+          <a href="/admin/auth_user/gerantkyc/?statut__exact=EN_ATTENTE" class="gazeo-btn-action">
+            <i class="fas fa-id-card text-warning"></i>
+            Valider KYC
+            {% if kpis.nb_kyc_attente > 0 %}
+              <span class="badge badge-warning font-weight-bold ml-1">{{ kpis.nb_kyc_attente }}</span>
+            {% endif %}
+          </a>
+          <a href="/admin/commandes/commande/" class="gazeo-btn-action">
+            <i class="fas fa-shopping-bag text-info"></i>
+            Commandes
+          </a>
+          <a href="/admin/depots/depot/" class="gazeo-btn-action">
+            <i class="fas fa-store text-success"></i>
+            Dépôts ({{ kpis.total_depots }})
+          </a>
+          <a href="/admin/analytics/daily/" class="gazeo-btn-action" target="_blank">
+            <i class="fas fa-chart-line text-cyan"></i>
+            Analytics JSON
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Alerte KYC Prioritaire (Si dossiers en attente) -->
+  {% if kpis.nb_kyc_attente > 0 %}
+  <div class="alert shadow-sm border-0 mb-4" style="background: #fffbeb; border-left: 5px solid #f59e0b !important; border-radius: 14px; padding: 16px 20px;">
+    <div class="d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <div style="width: 40px; height: 40px; background: #fef3c7; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 18px;">
+          <i class="fas fa-user-check"></i>
+        </div>
+        <div>
+          <h6 class="mb-0 font-weight-bold text-dark">
+            {{ kpis.nb_kyc_attente }} dossier{{ kpis.nb_kyc_attente|pluralize }} KYC gérant en attente d'approbation
+          </h6>
+          <small class="text-muted">Des gérants ont déposé leur CNI et photos de dépôt pour activer leur point de vente sur la carte.</small>
+        </div>
+      </div>
+      <a href="/admin/auth_user/gerantkyc/?statut__exact=EN_ATTENTE" class="btn btn-warning btn-sm font-weight-bold px-3 py-2" style="border-radius: 10px;">
+        Examiner les dossiers &rarr;
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 3. Grille des 4 Métriques Clés (Cards Modernes) -->
+  <div class="row g-3 mb-4">
+    <!-- Métrique 1 : Chiffre d'Affaires du Jour -->
+    <div class="col-xl-3 col-sm-6 mb-3 mb-xl-0">
+      <div class="gazeo-stat-card">
+        <div class="d-flex align-items-center justify-content-between">
+          <span class="gazeo-stat-label">Chiffre d'Affaires Jour</span>
+          <div class="gazeo-stat-icon" style="background: #eff6ff; color: #2563eb;">
+            <i class="fas fa-coins"></i>
+          </div>
+        </div>
+        <div>
+          <div class="gazeo-stat-value">
+            {{ kpis.ca_jour|intcomma }} <small style="font-size: 14px; font-weight: 600; color: #64748b;">FCFA</small>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span class="gazeo-pill pill-success" style="font-size: 10px;">
+              <i class="fas fa-arrow-up"></i> 100% collecté
+            </span>
+            <small class="text-muted" style="font-size: 11px;">via Notch Pay MoMo/OM</small>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Alertes contextuelles si KYC en attente -->
-    {% if kpis.nb_kyc_attente > 0 %}
-    <div class="alert alert-warning alert-dismissible">
-        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-        <h5><i class="icon fas fa-exclamation-triangle"></i> Dossiers KYC Gérants en attente !</h5>
-        Il y a {{ kpis.nb_kyc_attente }} dossier(s) KYC en attente de vérification par un administrateur.
-        <ul class="mb-0 mt-2">
-            {% for kyc in kpis.kyc_attente_liste %}
-            <li>
-                <a href="/admin/auth_user/gerantkyc/{{ kyc.id }}/change/" class="text-dark font-weight-bold">
-                    Gérant {{ kyc.gerant.telephone }} ({{ kyc.gerant.username }})
-                </a> — Soumis le {{ kyc.date_soumission|date:"d/m/Y H:i" }}
-            </li>
-            {% endfor %}
-        </ul>
+    <!-- Métrique 2 : Commandes du Jour -->
+    <div class="col-xl-3 col-sm-6 mb-3 mb-xl-0">
+      <div class="gazeo-stat-card">
+        <div class="d-flex align-items-center justify-content-between">
+          <span class="gazeo-stat-label">Commandes Aujourd'hui</span>
+          <div class="gazeo-stat-icon" style="background: #fff7ed; color: #ea580c;">
+            <i class="fas fa-fire-alt"></i>
+          </div>
+        </div>
+        <div>
+          <div class="gazeo-stat-value">{{ kpis.nb_commandes_jour }}</div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span class="gazeo-pill pill-info" style="font-size: 10px;">
+              <i class="fas fa-truck"></i> Taux succès {{ kpis.taux_livraison_7j }}%
+            </span>
+            <small class="text-muted" style="font-size: 11px;">7 derniers jours</small>
+          </div>
+        </div>
+      </div>
     </div>
-    {% endif %}
+
+    <!-- Métrique 3 : Réseau Dépôts Opérationnels -->
+    <div class="col-xl-3 col-sm-6 mb-3 mb-xl-0">
+      <div class="gazeo-stat-card">
+        <div class="d-flex align-items-center justify-content-between">
+          <span class="gazeo-stat-label">Réseau Dépôts Actifs</span>
+          <div class="gazeo-stat-icon" style="background: #f0fdf4; color: #16a34a;">
+            <i class="fas fa-store-alt"></i>
+          </div>
+        </div>
+        <div>
+          <div class="gazeo-stat-value">
+            {{ kpis.depots_actifs }} <small style="font-size: 14px; font-weight: 600; color: #64748b;">/ {{ kpis.total_depots }}</small>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            {% if kpis.nb_depots_rupture > 0 %}
+              <span class="gazeo-pill pill-danger" style="font-size: 10px;">
+                <i class="fas fa-exclamation-circle"></i> {{ kpis.nb_depots_rupture }} en rupture
+              </span>
+            {% else %}
+              <span class="gazeo-pill pill-success" style="font-size: 10px;">
+                <i class="fas fa-check-circle"></i> 100% en stock
+              </span>
+            {% endif %}
+            <small class="text-muted" style="font-size: 11px;">Dépôts Yaoundé</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Métrique 4 : Flotte & Clients Inscrits -->
+    <div class="col-xl-3 col-sm-6 mb-3 mb-xl-0">
+      <div class="gazeo-stat-card">
+        <div class="d-flex align-items-center justify-content-between">
+          <span class="gazeo-stat-label">Écosystème GAZEO</span>
+          <div class="gazeo-stat-icon" style="background: #fdf4ff; color: #a855f7;">
+            <i class="fas fa-users-cog"></i>
+          </div>
+        </div>
+        <div>
+          <div class="gazeo-stat-value">
+            {{ kpis.total_clients }} <small style="font-size: 14px; font-weight: 600; color: #64748b;">Clients</small>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span class="gazeo-pill pill-warning" style="font-size: 10px;">
+              <i class="fas fa-motorcycle"></i> {{ kpis.total_livreurs }} livreurs
+            </span>
+            <small class="text-muted" style="font-size: 11px;">Actifs</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Section Graphiques d'Activité (Chart.js) -->
+  <div class="row mb-4">
+    <!-- Graphique 1 : Évolution des Commandes & Ventes (7 jours) -->
+    <div class="col-lg-8 mb-4 mb-lg-0">
+      <div class="gazeo-section-card h-100">
+        <div class="gazeo-card-header">
+          <h6 class="gazeo-card-title">
+            <i class="fas fa-chart-area text-primary"></i>
+            Activité & Revenus des 7 Derniers Jours
+          </h6>
+          <span class="badge badge-light border text-muted px-2 py-1" style="font-size: 11px;">Temps Réel</span>
+        </div>
+        <div class="p-3">
+          <canvas id="gazeoActivityChart" style="height: 240px; max-height: 240px; width: 100%;"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graphique 2 : Répartition des Marques de Gaz (Donut) -->
+    <div class="col-lg-4">
+      <div class="gazeo-section-card h-100">
+        <div class="gazeo-card-header">
+          <h6 class="gazeo-card-title">
+            <i class="fas fa-pie-chart text-warning"></i>
+            Répartition des Dépôts
+          </h6>
+          <span class="badge badge-light border text-muted px-2 py-1" style="font-size: 11px;">Par Marque</span>
+        </div>
+        <div class="p-3 d-flex flex-column align-items-center justify-content-center">
+          <div style="position: relative; width: 180px; height: 180px;">
+            <canvas id="gazeoBrandsChart"></canvas>
+          </div>
+          <div class="d-flex justify-content-center flex-wrap gap-2 mt-3 text-muted" style="font-size: 11px; font-weight: 600;">
+            <span class="badge badge-primary px-2 py-1">Tradex</span>
+            <span class="badge badge-danger px-2 py-1">TotalEnergies</span>
+            <span class="badge badge-warning px-2 py-1">Camgaz</span>
+            <span class="badge badge-secondary px-2 py-1">SCTM</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Deux Tables d'Activité Récente en Direct -->
+  <div class="row">
+    <!-- Table 1 : Dernières Commandes -->
+    <div class="col-lg-7 mb-4 mb-lg-0">
+      <div class="gazeo-section-card">
+        <div class="gazeo-card-header">
+          <h6 class="gazeo-card-title">
+            <i class="fas fa-receipt text-success"></i>
+            Dernières Commandes Clients
+          </h6>
+          <a href="/admin/commandes/commande/" class="btn btn-outline-primary btn-xs px-2 py-1" style="border-radius: 8px;">
+            Toutes les commandes &rarr;
+          </a>
+        </div>
+        <div class="table-responsive">
+          <table class="table gazeo-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Dépôt</th>
+                <th>Montant</th>
+                <th>Statut</th>
+                <th>Heure</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cmd in kpis.dernieres_commandes %}
+              <tr>
+                <td class="font-weight-bold">
+                  <a href="/admin/commandes/commande/{{ cmd.id }}/change/" class="text-primary">#{{ cmd.id }}</a>
+                </td>
+                <td>
+                  <span class="font-weight-600">{{ cmd.client.telephone }}</span>
+                </td>
+                <td class="text-muted">{{ cmd.depot.nom|truncatechars:18 }}</td>
+                <td class="font-weight-bold text-dark">
+                  {{ cmd.montant_total_client|default:cmd.montant_total|intcomma }} <small>FCFA</small>
+                </td>
+                <td>
+                  {% if cmd.statut == 'LIVREE' %}
+                    <span class="gazeo-pill pill-success"><i class="fas fa-check"></i> Livrée</span>
+                  {% elif cmd.statut == 'EN_LIVRAISON' %}
+                    <span class="gazeo-pill pill-info"><i class="fas fa-motorcycle"></i> En cours</span>
+                  {% elif cmd.statut == 'ACCEPTEE' %}
+                    <span class="gazeo-pill pill-warning"><i class="fas fa-clock"></i> Acceptée</span>
+                  {% elif cmd.statut == 'ANNULEE' %}
+                    <span class="gazeo-pill pill-danger"><i class="fas fa-times"></i> Annulée</span>
+                  {% else %}
+                    <span class="gazeo-pill pill-warning"><i class="fas fa-hourglass-start"></i> En attente</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted" style="font-size: 11px;">
+                  {{ cmd.created_at|date:"H:i" }}
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="6" class="text-center py-4 text-muted">
+                  <i class="fas fa-shopping-basket fa-2x mb-2 text-slate-300"></i><br>
+                  Aucune commande enregistrée pour l'instant.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table 2 : Dossiers KYC Prioritaires -->
+    <div class="col-lg-5">
+      <div class="gazeo-section-card">
+        <div class="gazeo-card-header">
+          <h6 class="gazeo-card-title">
+            <i class="fas fa-shield-alt text-warning"></i>
+            Vérifications KYC Récentes
+          </h6>
+          <a href="/admin/auth_user/gerantkyc/" class="btn btn-outline-warning btn-xs px-2 py-1 text-dark" style="border-radius: 8px;">
+            Tous les KYC &rarr;
+          </a>
+        </div>
+        <div class="table-responsive">
+          <table class="table gazeo-table">
+            <thead>
+              <tr>
+                <th>Gérant</th>
+                <th>Statut</th>
+                <th>Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for kyc in kpis.dossiers_kyc %}
+              <tr>
+                <td>
+                  <div class="font-weight-bold text-dark">{{ kyc.gerant.telephone }}</div>
+                  <small class="text-muted">{{ kyc.gerant.username|default:"Gérant" }}</small>
+                </td>
+                <td>
+                  {% if kyc.statut == 'VALIDE' %}
+                    <span class="gazeo-pill pill-success">Validé</span>
+                  {% elif kyc.statut == 'REJETE' %}
+                    <span class="gazeo-pill pill-danger">Rejeté</span>
+                  {% else %}
+                    <span class="gazeo-pill pill-warning">En attente</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted" style="font-size: 11px;">
+                  {{ kyc.date_soumission|date:"d/m H:i" }}
+                </td>
+                <td>
+                  <a href="/admin/auth_user/gerantkyc/{{ kyc.id }}/change/" class="btn btn-sm btn-outline-secondary py-1 px-2" style="border-radius: 6px; font-size: 11px;">
+                    Examiner
+                  </a>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="4" class="text-center py-4 text-muted">
+                  <i class="fas fa-check-double fa-2x mb-2 text-success"></i><br>
+                  Tous les dossiers KYC sont à jour !
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<!-- Chargement dynamique de Chart.js via CDN pour les graphiques -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // 1. Configuration Chart Activité 7 jours
+    const ctxActivity = document.getElementById('gazeoActivityChart');
+    if (ctxActivity) {
+      new Chart(ctxActivity, {
+        type: 'line',
+        data: {
+          labels: {{ kpis.chart_labels|safe }},
+          datasets: [{
+            label: 'Commandes',
+            data: {{ kpis.chart_data_commandes|safe }},
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#2563eb',
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { precision: 0, font: { family: 'Plus Jakarta Sans', size: 11 } },
+              grid: { color: '#f1f5f9' }
+            },
+            x: {
+              ticks: { font: { family: 'Plus Jakarta Sans', size: 11 } },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    // 2. Configuration Chart Répartition Marques
+    const ctxBrands = document.getElementById('gazeoBrandsChart');
+    if (ctxBrands) {
+      new Chart(ctxBrands, {
+        type: 'doughnut',
+        data: {
+          labels: ['Tradex', 'TotalEnergies', 'Camgaz', 'SCTM', 'Autres'],
+          datasets: [{
+            data: [
+              {{ kpis.marques_stats.Tradex|default:20 }},
+              {{ kpis.marques_stats.TotalEnergies|default:15 }},
+              {{ kpis.marques_stats.Camgaz|default:10 }},
+              {{ kpis.marques_stats.SCTM|default:5 }},
+              {{ kpis.marques_stats.Autres|default:0 }}
+            ],
+            backgroundColor: [
+              '#2563eb', // Tradex Bleu
+              '#dc2626', // Total Rouge
+              '#ea580c', // Camgaz Orange
+              '#64748b', // SCTM Gris
+              '#cbd5e1'
+            ],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '72%',
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+  });
+</script>
 
 {{ block.super }}
 {% endblock %}
-

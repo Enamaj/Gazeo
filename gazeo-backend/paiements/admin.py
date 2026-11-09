@@ -1,7 +1,34 @@
 import csv
 from django.contrib import admin
 from django.http import HttpResponse
-from .models import Paiement, VirementHebdomadaire
+from django.utils.html import format_html
+from .models import Paiement, VirementHebdomadaire, VirementCommande
+
+
+@admin.register(VirementCommande)
+class VirementCommandeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'commande_link', 'type_badge', 'beneficiaire', 'montant_badge', 'statut_badge', 'reference_transfert', 'created_at')
+    list_filter = ('type_virement', 'statut', 'created_at')
+    search_fields = ('commande__id', 'beneficiaire', 'reference_transfert')
+    readonly_fields = ('created_at',)
+
+    def commande_link(self, obj):
+        return format_html('<a href="/admin/commandes/commande/{}/change/">Commande #{}</a>', obj.commande_id, obj.commande_id)
+    commande_link.short_description = "Commande"
+
+    def type_badge(self, obj):
+        colors = {'GERANT_MOMO': '#2563eb', 'GAZEO_COMMISSION': '#f97316'}
+        return format_html('<span style="background:{}; color:white; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">{}</span>', colors.get(obj.type_virement, '#64748b'), obj.get_type_virement_display())
+    type_badge.short_description = "Type"
+
+    def montant_badge(self, obj):
+        return format_html('<strong>{:,} FCFA</strong>', obj.montant).replace(',', ' ')
+    montant_badge.short_description = "Montant"
+
+    def statut_badge(self, obj):
+        colors = {'VIRE': '#10b981', 'EN_ATTENTE': '#f59e0b', 'ECHOUE': '#ef4444'}
+        return format_html('<span style="background:{}; color:white; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">{}</span>', colors.get(obj.statut, '#64748b'), obj.get_statut_display())
+    statut_badge.short_description = "Statut"
 
 
 @admin.action(description="📊 Exporter les virements gérants en CSV")

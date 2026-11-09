@@ -128,6 +128,7 @@ USE_TZ = True
 # Static & Media files
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -222,32 +223,45 @@ ADMIN_PHONE_NUMBER = env('ADMIN_PHONE_NUMBER', default='+237699000000')
 # Jazzmin Admin Theme Configuration
 JAZZMIN_SETTINGS = {
     "site_title": "GAZEO Admin",
-    "site_header": "GAZEO — Administration Yaoundé",
-    "site_brand": "GAZEO",
-    "welcome_sign": "Bienvenue sur le portail d'administration GAZEO",
-    "copyright": "GAZEO Cameroon SARL",
+    "site_header": "GAZEO Cameroon",
+    "site_brand": "⚡ GAZEO",
+    "welcome_sign": "Portail d'Administration Central GAZEO",
+    "copyright": "GAZEO Cameroon SARL • Yaoundé",
     "search_model": ["auth_user.User", "depots.Depot", "commandes.Commande"],
     "user_avatar": None,
+    "custom_css": "css/gazeo_admin.css",
     "topmenu_links": [
-        {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"name": "Analytics & KPIs", "url": "/admin/analytics/daily/", "permissions": ["auth.view_user"]},
+        {"name": "Tableau de Bord", "url": "admin:index"},
+        {"name": "Dossiers KYC", "url": "/admin/auth_user/gerantkyc/?statut__exact=EN_ATTENTE"},
+        {"name": "Supervision Flotte", "url": "/admin/commandes/suiviposition/"},
+        {"name": "Analytics JSON", "url": "/admin/analytics/daily/", "new_window": True},
+    ],
+    "order_with_respect_to": [
+        "commandes",
+        "depots",
+        "paiements",
+        "auth_user",
+        "notifications",
+        "notation",
+        "fidelite",
     ],
     "show_sidebar": True,
     "navigation_expanded": True,
     "icons": {
-        "auth_user.User": "fas fa-users",
+        "auth_user.User": "fas fa-users-cog",
         "auth_user.GerantKYC": "fas fa-id-card",
-        "depots.Depot": "fas fa-store-alt",
-        "commandes.Commande": "fas fa-shopping-cart",
-        "commandes.SuiviPosition": "fas fa-map-marker-alt",
-        "paiements.Paiement": "fas fa-money-bill-wave",
+        "depots.Depot": "fas fa-warehouse",
+        "commandes.Commande": "fas fa-shopping-bag",
+        "commandes.SuiviPosition": "fas fa-map-marked-alt",
+        "paiements.Paiement": "fas fa-credit-card",
+        "paiements.VirementCommande": "fas fa-exchange-alt",
         "paiements.VirementHebdomadaire": "fas fa-file-invoice-dollar",
         "notifications.DeviceToken": "fas fa-mobile-alt",
         "notifications.NotificationLog": "fas fa-bell",
         "notation.Avis": "fas fa-star",
         "fidelite.Transaction": "fas fa-gift",
     },
-    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_parents": "fas fa-folder",
     "default_icon_children": "fas fa-circle",
 }
 
@@ -256,14 +270,14 @@ JAZZMIN_UI_TWEAKS = {
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
-    "brand_colour": "navbar-primary",
+    "brand_colour": "navbar-dark",
     "accent": "accent-primary",
     "navbar": "navbar-dark navbar-primary",
-    "no_navbar_border": False,
-    "navbar_fixed": False,
+    "no_navbar_border": True,
+    "navbar_fixed": True,
     "layout_boxed": False,
     "footer_fixed": False,
-    "sidebar_fixed": False,
+    "sidebar_fixed": True,
     "sidebar": "sidebar-dark-primary",
     "sidebar_nav_small_text": False,
     "sidebar_disable_expand": False,
@@ -272,7 +286,6 @@ JAZZMIN_UI_TWEAKS = {
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": False,
     "theme": "default",
-    "dark_mode_theme": None,
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-secondary",
